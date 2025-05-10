@@ -1,9 +1,33 @@
 "use client";
 
-import React from 'react';
-import VoiceCaptureScreen from '../voice-capture/VoiceCaptureScreen';
+import React, { useState } from 'react';
+import dynamic from 'next/dynamic';
+
+// Dynamically import components with SSR disabled to prevent hydration errors
+const VoiceCaptureScreen = dynamic(
+  () => import('../voice-capture/VoiceCaptureScreen'),
+  { ssr: false }
+);
 
 export default function DesignShowcase() {
+  const [loaded, setLoaded] = useState(false);
+  
+  // Set loaded to true after component mounts
+  React.useEffect(() => {
+    setLoaded(true);
+  }, []);
+
+  if (!loaded) {
+    return (
+      <div className="flex flex-col items-center p-8 bg-[#1F2937] min-h-screen">
+        <h1 className="text-3xl font-bold mb-8 text-[#F9FAFB]">AI Super-Nanny Design Showcase</h1>
+        <div className="flex items-center justify-center w-full">
+          <div className="w-12 h-12 border-4 border-[#7C3AED] border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center p-8 bg-[#1F2937]">
       <h1 className="text-3xl font-bold mb-8 text-[#F9FAFB]">AI Super-Nanny Design Showcase</h1>
