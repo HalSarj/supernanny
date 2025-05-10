@@ -131,10 +131,11 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
       // Set as captured event for reference
       setCapturedEvent(newEvent);
       
-      // Add to timeline at the top
+      // Add to timeline at the top with animation
       setTimelineEvents(prev => [newEvent, ...prev]);
       
-      // Show completion state to trigger animation
+      // Briefly show completion state to provide feedback without full-screen takeover
+      // This will just highlight the new entry in the timeline
       setShowCompletionState(true);
       
       // Auto-dismiss completion state after animation completes
@@ -230,15 +231,25 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
                   "mb-6 relative",
                   isNewEvent && "animate-newCard"
                 )}
+                style={isNewEvent ? { zIndex: 10 } : {}}
               >
-                {/* Timeline dot */}
+                {/* Timeline dot with success indicator for new events */}
                 <div 
                   className="absolute -left-8 top-0 h-4 w-4 rounded-full flex items-center justify-center"
                   style={{ backgroundColor: eventColor }}
-                ></div>
+                >
+                  {isNewEvent && (
+                    <div className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-[#059669] flex items-center justify-center animate-scaleIn">
+                      <Icon name="Check" size={8} color="#FFFFFF" />
+                    </div>
+                  )}
+                </div>
                 
                 {/* Event card */}
-                <div className="rounded-xl bg-[#374151] shadow-sm overflow-hidden">
+                <div className={cn(
+                  "rounded-xl bg-[#374151] shadow-sm overflow-hidden transition-all duration-500",
+                  isNewEvent && "ring-2 ring-[#7C3AED] shadow-md shadow-[#7C3AED]/20"
+                )}>
                   {/* Event header */}
                   <div className="flex justify-between items-center p-3 border-b border-[#4B5563]">
                     <div className="flex items-center gap-2">
@@ -280,20 +291,7 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
         />
       )}
 
-      {/* Completion state overlay */}
-      {showCompletionState && (
-        <div className="fixed inset-0 bg-[#111827]/80 backdrop-blur-sm z-40 flex flex-col items-center justify-center p-6">
-          <div className="mb-4 flex items-center justify-center w-10 h-10 rounded-full bg-[#059669]/20">
-            <Icon name="Check" size={24} color="#059669" className="animate-scaleIn" />
-          </div>
-          <p className="text-[18px] font-medium text-[#F9FAFB] mb-2">Event Added</p>
-          <p className="text-[14px] text-[#D1D5DB] text-center max-w-[250px] mb-4">Your event has been added to the timeline</p>
-          {/* 3-second auto-dismiss countdown indicator */}
-          <div className="mt-4 w-24 h-1 bg-[#4B5563] rounded-full overflow-hidden">
-            <div className="h-full bg-[#7C3AED] animate-shrink"></div>
-          </div>
-        </div>
-      )}
+      {/* We no longer need a full-screen completion state overlay */}
 
       {/* Voice capture button - always visible in all states */}
       <div className="w-full flex justify-center pb-10 pt-4 mt-auto z-50">
