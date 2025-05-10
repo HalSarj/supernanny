@@ -167,8 +167,8 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
             <div className="w-16 h-16 rounded-full bg-[#7C3AED]/20 flex items-center justify-center mb-4">
               <Icon name="Mic" size={32} color="#7C3AED" />
             </div>
-            <p className="text-[18px] font-medium text-[#F9FAFB] mb-2">Listening...</p>
-            <p className="text-[14px] text-[#D1D5DB] text-center max-w-[250px] mb-8">
+            <p className="text-[18px] font-medium text-[#F9FAFB] mb-2">Recording</p>
+            <p className="text-[14px] text-[#D1D5DB] text-center max-w-[250px] mb-2">
               Tell me what happened with your baby
             </p>
           </div>
@@ -294,7 +294,10 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
       {/* We no longer need a full-screen completion state overlay */}
 
       {/* Voice capture button - always visible in all states */}
-      <div className="w-full flex justify-center pb-10 pt-4 mt-auto z-50">
+      <div className="w-full flex flex-col items-center pb-10 pt-4 mt-auto z-50">
+        <span className="text-[22px] font-medium mb-3 h-[28px]" style={{ color: isRecording ? '#F9FAFB' : 'transparent' }}>
+          {formatDuration(recordingDuration)}
+        </span>
         <VoiceCaptureButton
           isRecording={isRecording}
           isProcessing={isProcessing}

@@ -20,7 +20,6 @@ const VoiceCaptureButton: React.FC<VoiceCaptureButtonProps> = ({
   className,
 }) => {
   const [showHint, setShowHint] = useState(true);
-  const [recordingDuration, setRecordingDuration] = useState(0);
   
   // Hide the hint text after 3 seconds
   useEffect(() => {
@@ -30,29 +29,6 @@ const VoiceCaptureButton: React.FC<VoiceCaptureButtonProps> = ({
     
     return () => clearTimeout(timer);
   }, []);
-
-  // Handle recording timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (isRecording) {
-      setRecordingDuration(0);
-      interval = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isRecording]);
-  
-  // Format time as MM:SS
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const handlePress = () => {
     if (isProcessing) return;
@@ -72,11 +48,7 @@ const VoiceCaptureButton: React.FC<VoiceCaptureButtonProps> = ({
         </span>
       )}
       
-      {isRecording && (
-        <span className="text-[14px] font-medium text-[#F9FAFB] mb-3">
-          {formatTime(recordingDuration)}
-        </span>
-      )}
+      {/* Removed timer display */}
       
       {isProcessing && (
         <span className="text-[15px] font-medium text-[#D1D5DB] mb-3">
