@@ -119,7 +119,6 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
     // Simulate processing delay
     setTimeout(() => {
       setIsProcessing(false);
-      setShowCompletionState(true);
       
       // Create new event data
       const newEvent = {
@@ -129,13 +128,16 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
         description: 'Bottle feeding, 5oz formula, baby seemed hungry'
       };
       
-      // Set as captured event for preview
+      // Set as captured event for reference
       setCapturedEvent(newEvent);
       
       // Add to timeline at the top
       setTimelineEvents(prev => [newEvent, ...prev]);
       
-      // Auto-dismiss after 3 seconds
+      // Show completion state to trigger animation
+      setShowCompletionState(true);
+      
+      // Auto-dismiss completion state after animation completes
       setTimeout(() => {
         setShowCompletionState(false);
       }, 3000);
@@ -209,6 +211,8 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
           <div className="absolute left-[7px] top-0 bottom-0 w-[2px] bg-[#4B5563]"></div>
           
           {timelineEvents.map((event, index) => {
+            // Check if this is the most recently added event
+            const isNewEvent = showCompletionState && index === 0;
             const eventColor = 
               event.type === 'feeding' ? '#10B981' : 
               event.type === 'sleep' ? '#3B82F6' : 
@@ -220,7 +224,13 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
               event.type === 'diaper' ? 'Sparkles' : 'Star';
             
             return (
-              <div key={event.id} className="mb-6 relative">
+              <div 
+                key={event.id} 
+                className={cn(
+                  "mb-6 relative",
+                  isNewEvent && "animate-newCard"
+                )}
+              >
                 {/* Timeline dot */}
                 <div 
                   className="absolute -left-8 top-0 h-4 w-4 rounded-full flex items-center justify-center"
@@ -270,20 +280,14 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
         />
       )}
 
-      {/* Completion state with event preview */}
-      {showCompletionState && capturedEvent && (
-        <div className="absolute bottom-28 left-0 right-0 px-5 flex flex-col items-center">
+      {/* Completion state overlay */}
+      {showCompletionState && (
+        <div className="fixed inset-0 bg-[#111827]/80 backdrop-blur-sm z-40 flex flex-col items-center justify-center p-6">
           <div className="mb-4 flex items-center justify-center w-10 h-10 rounded-full bg-[#059669]/20">
             <Icon name="Check" size={24} color="#059669" className="animate-scaleIn" />
           </div>
-          <div className="animate-slideUp">
-            <EventPreviewCard
-              eventType={capturedEvent.type}
-              time={capturedEvent.time}
-              description={capturedEvent.description}
-              onViewDetails={() => console.log('View details clicked')}
-            />
-          </div>
+          <p className="text-[18px] font-medium text-[#F9FAFB] mb-2">Event Added</p>
+          <p className="text-[14px] text-[#D1D5DB] text-center max-w-[250px] mb-4">Your event has been added to the timeline</p>
           {/* 3-second auto-dismiss countdown indicator */}
           <div className="mt-4 w-24 h-1 bg-[#4B5563] rounded-full overflow-hidden">
             <div className="h-full bg-[#7C3AED] animate-shrink"></div>

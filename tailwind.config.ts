@@ -20,6 +20,7 @@ const config: Config = {
         'scaleIn': 'scaleIn 300ms ease-out forwards',
         'ping-slow': 'ping 3s cubic-bezier(0, 0, 0.2, 1) infinite',
         'shrink': 'shrink 3s linear forwards',
+        'newCard': 'newCard 450ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
       },
       transitionDelay: {
         '300': '300ms',
@@ -47,6 +48,10 @@ const config: Config = {
           '0%': { transform: 'scale(0)' },
           '70%': { transform: 'scale(1.1)' },
           '100%': { transform: 'scale(1)' },
+        },
+        newCard: {
+          '0%': { transform: 'translateY(-20px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
         },
         shrink: {
           '0%': { width: '100%' },
