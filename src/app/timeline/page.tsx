@@ -279,32 +279,34 @@ export default function Timeline() {
       </div>
       
       {/* Summary Statistics - Responsive */}
-      <div className="flex flex-col md:grid md:grid-cols-3 gap-3 mb-8 mt-8 px-4">
+      <div className="flex flex-row justify-between gap-2 mb-8 mt-4 px-2">
         {Object.entries(statistics).map(([key, stat]) => (
           <div 
             key={key} 
-            className="rounded-full py-2 px-4 flex items-center justify-between w-full"
+            className="rounded-full py-1.5 px-3 flex items-center justify-between flex-1"
             style={{ backgroundColor: stat.color }}
           >
-            <div className="flex items-center gap-2">
-              <Icon name={stat.icon} size={24} color="white" strokeWidth={1.5} />
-              <span className="text-[16px] font-semibold text-white">{stat.label}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[24px] font-bold text-white">{stat.count}</span>
-              {stat.change > 0 ? (
-                <div className="flex items-center text-[#10FFB0]">
-                  <Icon name="TrendingUp" size={12} color="#10FFB0" />
-                  <span className="text-[12px] font-medium">+{stat.change}</span>
+            <div className="flex items-center gap-1.5">
+              <Icon name={stat.icon} size={20} color="white" strokeWidth={1.5} />
+              <div className="flex flex-col">
+                <span className="text-[14px] font-semibold text-white">{stat.label}</span>
+                <div className="flex items-center">
+                  <span className="text-[18px] font-bold text-white mr-1">{stat.count}</span>
+                  {stat.change > 0 ? (
+                    <div className="flex items-center text-[#10FFB0]">
+                      <Icon name="TrendingUp" size={10} color="#10FFB0" />
+                      <span className="text-[10px] font-medium">+{stat.change}</span>
+                    </div>
+                  ) : stat.change < 0 ? (
+                    <div className="flex items-center text-[#FF4444]">
+                      <Icon name="TrendingDown" size={10} color="#FF4444" />
+                      <span className="text-[10px] font-medium">{stat.change}</span>
+                    </div>
+                  ) : (
+                    <span className="text-white text-[10px] font-medium">±0</span>
+                  )}
                 </div>
-              ) : stat.change < 0 ? (
-                <div className="flex items-center text-[#FF4444]">
-                  <Icon name="TrendingDown" size={12} color="#FF4444" />
-                  <span className="text-[12px] font-medium">{stat.change}</span>
-                </div>
-              ) : (
-                <span className="text-white text-[12px] font-medium">±0</span>
-              )}
+              </div>
             </div>
           </div>
         ))}
