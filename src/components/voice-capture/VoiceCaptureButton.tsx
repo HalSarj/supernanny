@@ -89,13 +89,13 @@ const VoiceCaptureButton: React.FC<VoiceCaptureButtonProps> = ({
         className={cn(
           "relative flex items-center justify-center",
           "rounded-full",
-          "bg-gradient-to-br from-[#7C3AED] to-[#8B5CF6]",
+          isProcessing ? "bg-[#374151]" : "bg-gradient-to-br from-[#7C3AED] to-[#8B5CF6]",
           "shadow-lg shadow-[#7C3AED]/20",
           "transition-all duration-200 ease-out",
           "focus:outline-none",
           !isRecording && !isProcessing && "w-[56px] h-[56px] animate-pulse",
           isRecording && "w-[62px] h-[62px]",
-          isProcessing && "w-[56px] h-[56px] bg-[#374151]"
+          isProcessing && "w-[56px] h-[56px]"
         )}
       >
         {isRecording && (

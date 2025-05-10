@@ -29,7 +29,8 @@ const AudioWaveform: React.FC<AudioWaveformProps> = ({ isRecording, className })
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  if (!isRecording) return null;
+  // Always render in design showcase mode, but only animate when recording
+  const shouldAnimate = isRecording;
 
   return (
     <div className={cn(

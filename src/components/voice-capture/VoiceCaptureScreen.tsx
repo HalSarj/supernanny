@@ -38,7 +38,7 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({ initialState = 
   const [isRecording, setIsRecording] = useState(initialState === 'recording');
   const [isProcessing, setIsProcessing] = useState(initialState === 'processing');
   const [showCompletionState, setShowCompletionState] = useState(initialState === 'completion');
-  const [recordingDuration, setRecordingDuration] = useState(isRecording ? 12 : 0);
+  const [recordingDuration, setRecordingDuration] = useState(initialState === 'recording' ? 12 : 0);
   const [capturedEvent, setCapturedEvent] = useState<{
     type: 'feeding' | 'sleep' | 'diaper' | 'milestone';
     time: string;
@@ -227,8 +227,8 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({ initialState = 
 
       {/* Audio waveform (only visible when recording) */}
       <AudioWaveform 
-        isRecording={isRecording} 
-        className="absolute top-1/2 left-1/2 transform -translate-x-1/2"
+        isRecording={isRecording || initialState === 'recording'} 
+        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 z-20"
       />
 
       {/* Completion state with event preview */}
@@ -252,8 +252,8 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({ initialState = 
         </div>
       )}
 
-      {/* Voice capture button */}
-      <div className="w-full flex justify-center pb-10 pt-4 mt-auto">
+      {/* Voice capture button - always visible in all states */}
+      <div className="w-full flex justify-center pb-10 pt-4 mt-auto z-30">
         <VoiceCaptureButton
           isRecording={isRecording}
           isProcessing={isProcessing}
