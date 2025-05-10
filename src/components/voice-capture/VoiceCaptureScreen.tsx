@@ -7,23 +7,33 @@ import EventPreviewCard from './EventPreviewCard';
 import { Icon } from '../ui/Icon';
 import { cn } from '@/utils/cn';
 
+// Define event type for better type checking
+type EventType = 'feeding' | 'sleep' | 'diaper' | 'milestone';
+
+interface TimelineEvent {
+  id: string;
+  type: EventType;
+  time: string;
+  description: string;
+}
+
 // Mock recent events data
-const mockRecentEvents = [
+const defaultEvents: TimelineEvent[] = [
   { 
     id: '1', 
-    type: 'feeding' as const, 
+    type: 'feeding', 
     time: '2:30 PM', 
     description: 'Bottle feeding, 4oz formula' 
   },
   { 
     id: '2', 
-    type: 'sleep' as const, 
+    type: 'sleep', 
     time: '12:15 PM', 
     description: 'Nap time, slept for 1 hour 20 minutes' 
   },
   { 
     id: '3', 
-    type: 'diaper' as const, 
+    type: 'diaper', 
     time: '11:30 AM', 
     description: 'Wet diaper, changed' 
   }
@@ -41,8 +51,26 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
   const [isProcessing, setIsProcessing] = useState(initialState === 'processing');
   const [showCompletionState, setShowCompletionState] = useState(initialState === 'completion');
   const [recordingDuration, setRecordingDuration] = useState(initialState === 'recording' ? 12 : 0);
+  
+  // Initialize timeline events
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>(() => {
+    // If we're in completion state, add the demo event to the top of the timeline
+    if (initialState === 'completion') {
+      return [
+        {
+          id: '0',
+          type: 'feeding',
+          time: '3:45 PM',
+          description: 'Bottle feeding, 5oz formula, baby seemed hungry'
+        },
+        ...defaultEvents
+      ];
+    }
+    return [...defaultEvents];
+  });
+  
   const [capturedEvent, setCapturedEvent] = useState<{
-    type: 'feeding' | 'sleep' | 'diaper' | 'milestone';
+    type: EventType;
     time: string;
     description: string;
   } | null>(initialState === 'completion' ? {
@@ -93,12 +121,19 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
       setIsProcessing(false);
       setShowCompletionState(true);
       
-      // Mock captured event data
-      setCapturedEvent({
-        type: 'feeding',
+      // Create new event data
+      const newEvent = {
+        id: `event-${Date.now()}`, // Generate unique ID
+        type: 'feeding' as EventType,
         time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
         description: 'Bottle feeding, 5oz formula, baby seemed hungry'
-      });
+      };
+      
+      // Set as captured event for preview
+      setCapturedEvent(newEvent);
+      
+      // Add to timeline at the top
+      setTimelineEvents(prev => [newEvent, ...prev]);
       
       // Auto-dismiss after 3 seconds
       setTimeout(() => {
@@ -173,7 +208,7 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
           {/* Timeline vertical line */}
           <div className="absolute left-[7px] top-0 bottom-0 w-[2px] bg-[#4B5563]"></div>
           
-          {mockRecentEvents.map((event, index) => {
+          {timelineEvents.map((event, index) => {
             const eventColor = 
               event.type === 'feeding' ? '#10B981' : 
               event.type === 'sleep' ? '#3B82F6' : 

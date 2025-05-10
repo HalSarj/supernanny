@@ -1,5 +1,6 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
+import { LucideProps } from 'lucide-react';
 
 export type IconName = keyof typeof LucideIcons;
 
@@ -26,7 +27,8 @@ export const Icon: React.FC<IconProps> = ({
   strokeWidth = 2,
   className = '',
 }) => {
-  const LucideIcon = LucideIcons[name];
+  // Type assertion to handle the dynamic import
+  const LucideIcon = LucideIcons[name] as React.ComponentType<LucideProps>;
 
   if (!LucideIcon) {
     console.error(`Icon "${name}" not found in Lucide icons`);
