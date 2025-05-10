@@ -228,10 +228,10 @@ const VoiceCaptureScreen: React.FC<VoiceCaptureScreenProps> = ({
               <div 
                 key={event.id} 
                 className={cn(
-                  "mb-6 relative",
-                  isNewEvent && "animate-newCard"
+                  "relative", // Remove mb-6 as it's now part of the animation
+                  isNewEvent ? "animate-newCard" : "mb-6"
                 )}
-                style={isNewEvent ? { zIndex: 10 } : {}}
+                style={isNewEvent ? { zIndex: 10, overflow: 'hidden' } : {}}
               >
                 {/* Timeline dot with success indicator for new events */}
                 <div 
