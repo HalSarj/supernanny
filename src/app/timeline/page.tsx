@@ -68,8 +68,29 @@ export default function Timeline() {
   }, [showNewEvent]);
   
   useEffect(() => {
-    // Initialize with default events
-    setTimelineEvents(defaultTimelineEvents);
+    // Load events from localStorage if available, otherwise use default events
+    const loadEvents = () => {
+      try {
+        const storedEvents = localStorage.getItem('timelineEvents');
+        if (storedEvents) {
+          const parsedEvents = JSON.parse(storedEvents);
+          // Combine stored events with default events, avoiding duplicates by ID
+          const combinedEvents = [...parsedEvents, ...defaultTimelineEvents];
+          const uniqueEvents = combinedEvents.filter((event, index, self) => 
+            index === self.findIndex(e => e.id === event.id)
+          );
+          setTimelineEvents(uniqueEvents);
+        } else {
+          setTimelineEvents(defaultTimelineEvents);
+        }
+      } catch (error) {
+        console.error('Failed to load events from localStorage:', error);
+        setTimelineEvents(defaultTimelineEvents);
+      }
+    };
+    
+    // Load events initially
+    loadEvents();
     
     // Check if there's a new event parameter in the URL
     const checkForNewEvent = () => {
@@ -77,19 +98,29 @@ export default function Timeline() {
       const hasNewEvent = urlParams.get('newEvent') === 'true';
       
       if (hasNewEvent) {
-        // Create a new event to add to the timeline
-        const newEvent: TimelineEvent = {
-          id: `event-${Date.now()}`,
-          type: 'feeding',
-          time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-          description: 'Bottle feeding, 5oz formula, baby seemed hungry',
-          hasDetails: true,
-          isNew: true // Mark this as a new event
-        };
-        
-        // Add the new event to the top of the timeline with animation
-        setTimelineEvents(prevEvents => [newEvent, ...prevEvents]);
-        setShowNewEvent(true);
+        // Check if there are any new events in localStorage
+        try {
+          const storedEvents = localStorage.getItem('timelineEvents');
+          if (storedEvents) {
+            const parsedEvents = JSON.parse(storedEvents);
+            // Get the most recent event (last one added)
+            const latestEvent = parsedEvents[parsedEvents.length - 1];
+            if (latestEvent) {
+              // Mark it as new for animation
+              latestEvent.isNew = true;
+              
+              // Add the new event to the top of the timeline with animation
+              setTimelineEvents(prevEvents => {
+                // Avoid duplicates
+                const filteredEvents = prevEvents.filter(e => e.id !== latestEvent.id);
+                return [latestEvent, ...filteredEvents];
+              });
+              setShowNewEvent(true);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to get latest event from localStorage:', error);
+        }
         
         // Clean up the URL parameter without causing a page reload
         window.history.replaceState({}, '', '/timeline');
@@ -99,15 +130,44 @@ export default function Timeline() {
     // Check immediately on mount
     checkForNewEvent();
     
-    // Also set up a listener for URL changes
+    // Set up a listener for URL changes
     const handleUrlChange = () => {
       checkForNewEvent();
     };
     
+    // Set up a listener for custom events from the voice capture completion
+    const handleNewEventAdded = () => {
+      // Reload events from localStorage immediately
+      try {
+        const storedEvents = localStorage.getItem('timelineEvents');
+        if (storedEvents) {
+          const parsedEvents = JSON.parse(storedEvents);
+          // Get the most recent event (last one added)
+          const latestEvent = parsedEvents[parsedEvents.length - 1];
+          if (latestEvent) {
+            // Mark it as new for animation
+            latestEvent.isNew = true;
+            
+            // Add the new event to the top of the timeline with animation
+            setTimelineEvents(prevEvents => {
+              // Avoid duplicates
+              const filteredEvents = prevEvents.filter(e => e.id !== latestEvent.id);
+              return [latestEvent, ...filteredEvents];
+            });
+            setShowNewEvent(true);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get latest event from localStorage:', error);
+      }
+    };
+    
     window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('newEventAdded', handleNewEventAdded);
     
     return () => {
       window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('newEventAdded', handleNewEventAdded);
     };
   }, []);
   // Mock statistics data for demonstration
