@@ -128,11 +128,21 @@ export const VoiceRecordingProvider: React.FC<VoiceRecordingProviderProps> = ({
   // Handle recording completion
   const handleRecordingComplete = async (audioBlob: Blob) => {
     try {
-      setProcessingError(null);
       setRecordingState('processing');
       
-      // Process the audio recording
+      // Set a timeout to prevent getting stuck in processing state
+      const processingTimeout = setTimeout(() => {
+        if (recordingState === 'processing') {
+          setProcessingError('Processing timed out');
+          setRecordingState('idle');
+        }
+      }, 30000); // 30 seconds timeout
+      
+      // Process the recording
       const result = await audioProcessingService.processAudioRecording(audioBlob, recordingDuration);
+      
+      // Clear the timeout
+      clearTimeout(processingTimeout);
       
       if (result.success && result.eventId) {
         setLastEventId(result.eventId);
@@ -140,7 +150,12 @@ export const VoiceRecordingProvider: React.FC<VoiceRecordingProviderProps> = ({
       } else {
         console.error('Failed to process recording:', result.error);
         setProcessingError(result.error || 'Failed to process recording');
-        setRecordingState('idle');
+        // Keep the error visible by not changing state if it's an authentication error
+        if (result.error?.includes('Authentication') || result.error?.includes('logged in')) {
+          // Keep the current state so the error is visible
+        } else {
+          setRecordingState('idle');
+        }
       }
     } catch (error) {
       console.error('Error in handleRecordingComplete:', error);

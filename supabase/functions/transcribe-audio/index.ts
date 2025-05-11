@@ -76,7 +76,10 @@ const transcribeAudio = async (audioUrl: string): Promise<string> => {
     
     // Create form data for the OpenAI API request
     const formData = new FormData();
-    formData.append('file', audioBlob, 'audio.m4a');
+    // Use the correct file extension based on the content type
+    const fileExtension = audioBlob.type.includes('webm') ? 'webm' : 'm4a';
+    debug('Using file extension for Whisper API', { fileExtension, contentType: audioBlob.type });
+    formData.append('file', audioBlob, `audio.${fileExtension}`);
     formData.append('model', 'whisper-1');
     formData.append('language', 'en');
     debug('FormData created for Whisper API');

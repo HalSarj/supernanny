@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 import { v4 as uuidv4 } from 'uuid';
 
 // Define types for the service
@@ -52,7 +53,8 @@ export class AudioProcessingService {
   private supabase;
   
   constructor() {
-    // Initialize Supabase client
+    // Initialize Supabase client using the browser client to access the same session
+    // This ensures we're using the same authentication context as the rest of the app
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     
@@ -60,7 +62,8 @@ export class AudioProcessingService {
       throw new Error('Supabase credentials not found in environment variables');
     }
     
-    this.supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // Use createBrowserClient instead of createClient to ensure we get the browser session
+    this.supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
   }
   
   /**
@@ -125,16 +128,22 @@ export class AudioProcessingService {
   }
   
   /**
-   * Gets a public URL for an uploaded file
+   * Gets a signed URL for an uploaded file with temporary access
    * @param path The file path in storage
-   * @returns The public URL for the file
+   * @returns The signed URL for the file with temporary access
    */
-  private getPublicUrl(path: string): string {
-    const { data } = this.supabase.storage
+  private async getSignedUrl(path: string): Promise<string> {
+    // Create a signed URL that expires in 60 seconds
+    const { data, error } = await this.supabase.storage
       .from('voice-recordings')
-      .getPublicUrl(path);
+      .createSignedUrl(path, 60);
+    
+    if (error) {
+      console.error('Error creating signed URL:', error);
+      throw new Error(`Failed to create signed URL: ${error.message}`);
+    }
       
-    return data.publicUrl;
+    return data.signedUrl;
   }
   
   /**
@@ -143,13 +152,41 @@ export class AudioProcessingService {
    * @param duration The duration of the recording in seconds
    * @returns The transcription result
    */
+  /**
+   * Check if user is authenticated
+   * @returns True if authenticated, false otherwise
+   */
+  private async checkAuthentication(): Promise<boolean> {
+    const { data } = await this.supabase.auth.getSession();
+    return !!data.session;
+  }
+
   public async processAudioRecording(audioBlob: Blob, duration: number): Promise<TranscriptionResult> {
     try {
       console.log('Starting audio processing', { durationSeconds: duration, blobSize: audioBlob.size });
       
-      // Get the current user
+      // Check authentication before proceeding
+      const isAuthenticated = await this.checkAuthentication();
+      if (!isAuthenticated) {
+        console.error('User is not authenticated');
+        return {
+          success: false,
+          error: 'Authentication error: You must be logged in to process recordings',
+          failedStep: 'authentication'
+        };
+      }
+      
+      // Get the current user with detailed logging
       console.log('Fetching current user');
       const { data: { user }, error: userError } = await this.supabase.auth.getUser();
+      
+      // Log detailed user information for debugging
+      console.log('User data:', {
+        id: user?.id,
+        email: user?.email,
+        app_metadata: user?.app_metadata,
+        user_metadata: user?.user_metadata
+      });
       
       if (userError) {
         console.error('Error getting user:', userError);
@@ -163,32 +200,45 @@ export class AudioProcessingService {
       
       console.log('User authenticated successfully', { userId: user.id });
       
-      // Get the tenant ID for the user
-      const { data: tenantData, error: tenantError } = await this.supabase
-        .from('users_to_tenants')
+      // Get the tenant ID directly from the users table
+      const { data: userData, error: tenantError } = await this.supabase
+        .from('users')
         .select('tenant_id')
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .single();
       
-      if (tenantError || !tenantData) {
+      if (tenantError || !userData || !userData.tenant_id) {
+        console.error('Error getting tenant ID:', tenantError);
         throw new Error('Failed to get tenant ID');
       }
       
-      const tenantId = tenantData.tenant_id;
+      const tenantId = userData.tenant_id;
       
       // Upload the audio file
       const { path, id } = await this.uploadAudio(audioBlob, tenantId);
       
-      // Get a public URL for the uploaded file
-      const publicUrl = this.getPublicUrl(path);
-      
-      console.log('Generated public URL for audio file', { publicUrl });
+      // Generate a signed URL for the uploaded file
+      const signedUrl = await this.getSignedUrl(path);
+      console.log('Generated signed URL for audio file', { signedUrl });
       
       // Call the Edge Function to transcribe the audio
       console.log('Invoking transcribe-audio Edge Function');
+      
+      // Get the current session to include the access token
+      const { data: sessionData } = await this.supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      
+      if (!accessToken) {
+        console.error('No access token available for Edge Function call');
+        throw new Error('Authentication error: No valid session found');
+      }
+      
       const { data: transcriptionData, error: transcriptionError } = await this.supabase.functions
         .invoke('transcribe-audio', {
-          body: { audioUrl: publicUrl, fileId: id, duration },
+          body: { audioUrl: signedUrl, fileId: id, duration },
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          }
         });
       
       if (transcriptionError) {
