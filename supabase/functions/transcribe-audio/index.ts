@@ -83,13 +83,18 @@ const transcribeAudio = async (audioUrl: string): Promise<string> => {
     
     // Create form data for the OpenAI API request
     const formData = new FormData();
-    // Use the correct file extension based on the content type
-    let fileExtension = 'm4a'; // Default
+    // Map content types to file extensions that Whisper API accepts
+    // Whisper API supports: ['flac', 'mp3', 'mp4', 'mpeg', 'mpga', 'ogg', 'wav', 'webm']
+    let fileExtension = 'mp3'; // Default to a widely supported format
     
-    if (audioBlob.type.includes('webm')) {
+    // For iPhone recordings (which are typically m4a), map to mp4 which is accepted by Whisper
+    if (audioBlob.type.includes('m4a')) {
+      fileExtension = 'mp4'; // Use mp4 extension for m4a files as Whisper accepts mp4
+      debug('iPhone M4A audio detected, using mp4 extension for Whisper API compatibility');
+    } else if (audioBlob.type.includes('webm')) {
       fileExtension = 'webm';
-    } else if (audioBlob.type.includes('mp4') || audioBlob.type.includes('mp4a')) {
-      fileExtension = 'm4a';
+    } else if (audioBlob.type.includes('mp4')) {
+      fileExtension = 'mp4';
     } else if (audioBlob.type.includes('mpeg') || audioBlob.type.includes('mpga') || audioBlob.type.includes('mp3')) {
       fileExtension = 'mp3';
     } else if (audioBlob.type.includes('wav') || audioBlob.type.includes('wave')) {
@@ -101,7 +106,16 @@ const transcribeAudio = async (audioUrl: string): Promise<string> => {
     }
     
     debug('Using file extension for Whisper API', { fileExtension, contentType: audioBlob.type, blobSize: audioBlob.size });
-    formData.append('file', audioBlob, `audio.${fileExtension}`);
+    
+    // Create a new blob with the same data but a different type if needed
+    let processedBlob = audioBlob;
+    if (audioBlob.type.includes('m4a')) {
+      // For iPhone recordings, we keep the same data but change how we present it to the API
+      processedBlob = new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp4' });
+      debug('Converted audio/m4a blob to audio/mp4 for better Whisper API compatibility');
+    }
+    
+    formData.append('file', processedBlob, `audio.${fileExtension}`);
     formData.append('model', 'whisper-1');
     formData.append('language', 'en');
     debug('FormData created for Whisper API');

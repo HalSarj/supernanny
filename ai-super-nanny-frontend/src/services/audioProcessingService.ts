@@ -40,6 +40,7 @@ export interface DiaryEntry {
 export interface TranscriptionResult {
   // Success response properties
   success: boolean;
+  eventId?: string; // ID of the created event (used in VoiceRecordingContext)
   
   // Error response properties
   error?: string;
@@ -172,6 +173,12 @@ export class AudioProcessingService {
   }
 
   public async processAudioRecording(audioBlob: Blob, duration: number): Promise<TranscriptionResult> {
+    // Log detailed information about the audio blob for debugging
+    console.log('Audio blob details:', {
+      type: audioBlob.type,
+      size: audioBlob.size,
+      duration: duration
+    });
     try {
       console.log('Starting audio processing', { durationSeconds: duration, blobSize: audioBlob.size });
       
@@ -243,13 +250,49 @@ export class AudioProcessingService {
         throw new Error('Authentication error: No valid session found');
       }
       
-      const { data: transcriptionData, error: transcriptionError } = await this.supabase.functions
-        .invoke('transcribe-audio', {
-          body: { audioUrl: signedUrl, fileId: id, duration },
-          headers: {
-            Authorization: `Bearer ${accessToken}`
-          }
+      // Try to invoke the Edge Function with better error handling
+      let transcriptionData;
+      let transcriptionError;
+      
+      try {
+        console.log('Calling transcribe-audio Edge Function');
+        console.log('Audio URL length:', signedUrl.length);
+        
+        // Use the Supabase client's built-in functions.invoke method which handles authentication correctly
+        console.log('Invoking Edge Function with Supabase client');
+        
+        // Add detailed logging to help diagnose issues
+        console.log('Request payload:', {
+          audioUrl: `${signedUrl.substring(0, 30)}...`, // Only log part of the URL for security
+          fileId: id,
+          duration
         });
+        
+        // Use the Supabase client's built-in functions.invoke method
+        const { data, error } = await this.supabase.functions.invoke('transcribe-audio', {
+          body: { audioUrl: signedUrl, fileId: id, duration },
+        });
+        
+        if (error) {
+          console.error('Edge Function error:', error);
+          throw new Error(`Edge Function error: ${error.message || 'Unknown error'}`);
+        }
+        
+        transcriptionData = data;
+        console.log('Edge Function success response:', { 
+          success: transcriptionData?.success,
+          dataKeys: transcriptionData ? Object.keys(transcriptionData) : null
+        });
+      } catch (error) {
+        console.error('Exception during Edge Function invocation:', error);
+        // Properly type the error to avoid TypeScript errors
+        if (error instanceof Error) {
+          transcriptionError = error;
+        } else {
+          // If it's not an Error object, create one
+          transcriptionError = new Error(String(error));
+        }
+      }
       
       if (transcriptionError) {
         console.error('Error transcribing audio:', transcriptionError);
@@ -263,6 +306,8 @@ export class AudioProcessingService {
       
       // Store the events in localStorage for offline access
       if (result.success && result.events && result.events.length > 0) {
+        // Set the eventId property to the first event's ID for use in VoiceRecordingContext
+        result.eventId = result.events[0].id;
         try {
           // Get existing events from localStorage
           const existingEventsJson = localStorage.getItem('timelineEvents');
