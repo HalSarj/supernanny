@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd ai-super-nanny-frontend && npm run build",
+  "outputDirectory": "ai-super-nanny-frontend/.next",
+  "framework": "nextjs",
+  "installCommand": "cd ai-super-nanny-frontend && npm install"
+}
