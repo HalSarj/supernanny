@@ -84,8 +84,23 @@ const transcribeAudio = async (audioUrl: string): Promise<string> => {
     // Create form data for the OpenAI API request
     const formData = new FormData();
     // Use the correct file extension based on the content type
-    const fileExtension = audioBlob.type.includes('webm') ? 'webm' : 'm4a';
-    debug('Using file extension for Whisper API', { fileExtension, contentType: audioBlob.type });
+    let fileExtension = 'm4a'; // Default
+    
+    if (audioBlob.type.includes('webm')) {
+      fileExtension = 'webm';
+    } else if (audioBlob.type.includes('mp4') || audioBlob.type.includes('mp4a')) {
+      fileExtension = 'm4a';
+    } else if (audioBlob.type.includes('mpeg') || audioBlob.type.includes('mpga') || audioBlob.type.includes('mp3')) {
+      fileExtension = 'mp3';
+    } else if (audioBlob.type.includes('wav') || audioBlob.type.includes('wave')) {
+      fileExtension = 'wav';
+    } else if (audioBlob.type.includes('ogg')) {
+      fileExtension = 'ogg';
+    } else if (audioBlob.type.includes('flac')) {
+      fileExtension = 'flac';
+    }
+    
+    debug('Using file extension for Whisper API', { fileExtension, contentType: audioBlob.type, blobSize: audioBlob.size });
     formData.append('file', audioBlob, `audio.${fileExtension}`);
     formData.append('model', 'whisper-1');
     formData.append('language', 'en');
@@ -104,8 +119,27 @@ const transcribeAudio = async (audioUrl: string): Promise<string> => {
     debug('Whisper API response received', { status: response.status });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      debug('OpenAI API error', { status: response.status, error: errorText });
+      let errorText = '';
+      let errorJson = null;
+      
+      try {
+        // Try to parse as JSON first
+        errorJson = await response.json();
+        errorText = JSON.stringify(errorJson);
+        debug('OpenAI API error (JSON)', { status: response.status, error: errorJson });
+      } catch (e) {
+        // If not JSON, get as text
+        errorText = await response.text();
+        debug('OpenAI API error (Text)', { status: response.status, error: errorText });
+      }
+      
+      // Log more details about the request that caused the error
+      debug('Request details that caused error', { 
+        audioType: audioBlob.type, 
+        audioSize: audioBlob.size, 
+        fileExtension: fileExtension 
+      });
+      
       throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
     }
     
