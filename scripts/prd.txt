@@ -1,0 +1,1463 @@
+Let me first understand the AI Super-Nanny application architecture based on the provided documentation. This is a PWA (Progressive Web App) designed to help parents track baby development, capture daily events, and provide personalized guidance through an AI assistant.
+
+The system uses Next.js for the frontend, Supabase for backend services, Neo4j for knowledge graph management, and various external APIs like OpenRouter, Resend, Sentry, and LangSmith. The architecture follows a multi-tenant design from the start, using JWT claims and row-level security policies.
+
+I'll now develop a detailed feature specification document as requested.
+
+## **File System**
+
+### **Frontend Repository (Next.js PWA)**
+
+```
+ai-super-nanny-frontend/
+├── public/
+│   ├── manifest.json
+│   ├── icons/
+│   ├── service-worker.js
+│   └── workbox-*.js
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── auth/
+│   │   │   ├── voice/
+│   │   │   ├── events/
+│   │   │   └── chat/
+│   │   ├── (auth)/
+│   │   │   ├── login/
+│   │   │   ├── register/
+│   │   │   └── reset-password/
+│   │   ├── (app)/
+│   │   │   ├── home/
+│   │   │   ├── timeline/
+│   │   │   ├── chat/
+│   │   │   ├── profile/
+│   │   │   └── settings/
+│   │   ├── layout.tsx
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── auth/
+│   │   ├── voice/
+│   │   │   ├── VoiceRecorder.tsx
+│   │   │   └── ProcessingIndicator.tsx
+│   │   ├── timeline/
+│   │   │   ├── TimelineView.tsx
+│   │   │   ├── DayView.tsx
+│   │   │   ├── WeekView.tsx
+│   │   │   └── EventCard.tsx
+│   │   ├── chat/
+│   │   │   ├── ChatInterface.tsx
+│   │   │   └── ChatMessage.tsx
+│   │   └── ui/
+│   ├── hooks/
+│   │   ├── useAuth.ts
+│   │   ├── useVoiceCapture.ts
+│   │   ├── useEventExtraction.ts
+│   │   ├── useLocalStorage.ts
+│   │   └── useOfflineSync.ts
+│   ├── lib/
+│   │   ├── supabase.ts
+│   │   ├── audio.ts
+│   │   ├── extraction.ts
+│   │   ├── openrouter.ts
+│   │   └── sentry.ts
+│   ├── utils/
+│   │   ├── dateTime.ts
+│   │   ├── eventProcessing.ts
+│   │   ├── storage.ts
+│   │   └── analytics.ts
+│   ├── types/
+│   │   ├── events.ts
+│   │   ├── babies.ts
+│   │   ├── users.ts
+│   │   └── tenants.ts
+│   ├── styles/
+│   │   └── globals.css
+│   └── context/
+│       ├── AuthContext.tsx
+│       └── AppStateContext.tsx
+├── tailwind.config.js
+├── next.config.js
+├── package.json
+└── tsconfig.json
+```
+
+### **Backend Repository (Supabase Edge Functions)**
+
+```
+ai-super-nanny-backend/
+├── supabase/
+│   ├── functions/
+│   │   ├── voice-transcription/
+│   │   │   ├── index.ts
+│   │   │   └── helpers/
+│   │   ├── pattern-extraction/
+│   │   │   ├── index.ts
+│   │   │   └── patterns/
+│   │   ├── knowledge-sync/
+│   │   │   ├── index.ts
+│   │   │   └── neo4j-client.ts
+│   │   ├── digest-generator/
+│   │   │   ├── index.ts
+│   │   │   └── templates/
+│   │   ├── chat-assistant/
+│   │   │   ├── index.ts
+│   │   │   ├── safety-rules.ts
+│   │   │   └── prompt-templates.ts
+│   │   └── gdpr-export/
+│   │       └── index.ts
+│   ├── migrations/
+│   │   └── [timestamp]_initial_schema.sql
+│   └── seed.sql
+├── scripts/
+│   ├── neo4j-backup.js
+│   ├── postgres-backup.js
+│   └── audio-cleanup.js
+├── types/
+│   ├── database.ts
+│   └── vector.ts
+├── package.json
+└── tsconfig.json
+```
+
+## **Feature Specifications**
+
+### **Feature 1: Voice-First Capture**
+
+* **Feature goal**  
+   Enable parents to quickly and naturally record narrative logs about their baby through speech, with automatic extraction of key events and metrics.  
+* **API relationships**  
+  1. Frontend connects to Supabase Edge Function for speech-to-text conversion  
+  2. Uses Web Audio API for local audio capture  
+  3. Stores temporary audio files in Supabase Storage  
+  4. Writes transcriptions and extracted events to Supabase PostgreSQL  
+* **Detailed feature requirements**  
+  1. Provide a simple tap-to-talk interface that's accessible from any screen  
+  2. Capture high-quality audio with visual feedback showing recording in progress  
+  3. Support recordings of variable length (5 seconds to 2 minutes)  
+  4. Process speech to text using OpenAI Whisper API via Supabase Edge Functions  
+  5. Extract structured data (feeds, diapers, sleep, etc.) using pattern matching  
+  6. Store raw audio files temporarily (24h) for fallback purposes  
+  7. Allow playback of recent recordings in case of transcription failure  
+  8. Provide clear visual feedback during processing stages  
+  9. Support offline recording with queued processing when connection returns  
+  10. Implement graceful fallbacks for failed transcriptions  
+  11. Handle background noise without requiring specialized filtering  
+  12. Ensure minimal delay between recording completion and display of extracted events  
+* **Detailed implementation guide**  
+  1. **Frontend Audio Capture**  
+     * Implement `useVoiceCapture` hook using Web Audio API and MediaRecorder  
+     * Create audio buffer for local storage in case of network issues  
+     * Build UI component with recording animation and timer  
+     * Implement tap interaction (not hold-to-talk) to encourage longer narratives  
+     * Add visual feedback for recording, processing, and completion states  
+     * Store audio in .m4a format to balance quality and file size  
+  2. **Audio Processing Pipeline**  
+     * Create a Supabase Edge Function endpoint for receiving audio files  
+     * Implement temporary signed URLs for audio storage with 24h expiration  
+     * Set up OpenAI Whisper API integration with fallback error handling  
+     * Return transcription to frontend while beginning pattern extraction  
+     * Store original audio URL in diary\_entries table with expiration timestamp  
+     * Implement automatic audio purging after 24 hours using TTL  
+  3. **Pattern Extraction System**  
+     * Create a robust pattern-matching system using regular expressions:  
+       * Feeding patterns: `(fed|bottle|nursed|breastfed) .* (\d+)\s?(ml|oz|ounces)`  
+       * Sleep patterns: `(slept|napped|nap|sleep) .* (from|for|until) (\d+):?(\d+)\s?(am|pm|hours|minutes)`  
+       * Diaper patterns: `(diaper|poop|wet) .* (soiled|dirty|clean|wet|dry|changed)`  
+       * Milestone patterns: `(first|began|started) .* (smiling|crawling|rolling|sitting|walking|talking)`  
+     * Create lookup tables for common terms and synonyms  
+     * Implement a confidence scoring system for extracted events  
+     * Allow manual correction of extracted data  
+     * Store extraction rules in database to enable updates without code changes  
+  4. **Fallback Mechanisms**  
+     * Implement retry logic for failed API calls  
+     * Create manual transcription entry option for when auto-transcription fails  
+     * Store audio locally while awaiting successful processing  
+     * Implement background sync for offline recordings  
+     * Add manual event entry as alternative to voice capture  
+  5. **Data Flow**  
+     * Audio capture in browser → local temporary storage  
+     * Upload to Supabase Storage with 24h TTL  
+     * Trigger Edge Function for transcription  
+     * Return transcription to client while pattern extraction runs  
+     * Display extracted events in timeline immediately  
+     * Remove audio file after 24h or successful processing, whichever comes first
+
+### **Feature 2: Personal Knowledge Graph**
+
+* **Feature goal**  
+   Create and maintain a graph-based data structure that remembers baby traits, family routines, and development patterns to facilitate personalized insights.  
+* **API relationships**  
+  1. Postgres database as primary data store  
+  2. Neo4j Aura Free for knowledge graph storage  
+  3. Nightly batch synchronization via Supabase Edge Functions  
+  4. Query interface for chat assistant to leverage personalized knowledge  
+* **Detailed feature requirements**  
+  1. Build baby profiles with core developmental metadata  
+  2. Track key relationships between baby attributes, events, and milestones  
+  3. Maintain a simplified schema to avoid exceeding Neo4j Aura Free's 200k node limit  
+  4. Use a fact and milestone label set for optimal node utilization  
+  5. Ensure nightly synchronization from Postgres to Neo4j  
+  6. Enable progressive knowledge building about specific baby's patterns  
+  7. Support querying for insights about baby development and routine patterns  
+  8. Maintain data isolation between different tenant families  
+* **Detailed implementation guide**  
+  1. **Knowledge Graph Schema Design**  
+     * Design core node types:  
+       * `Baby`: Central entity with properties like name, dob, sex  
+       * `Event`: Occurrences like feedings, sleep, etc. with timestamps and metadata  
+       * `Fact`: Knowledge about the baby (preferences, allergies, developmental traits)  
+       * `Milestone`: Developmental achievements with timestamps  
+     * Design relationship types:  
+       * `HAS_EVENT`: Connects Baby to Event nodes, with timeframes  
+       * `EXPERIENCED`: Connects Baby to Milestone nodes, with dates  
+       * `HAS_FACT`: Connects Baby to Fact nodes, with confidence scores  
+     * Keep schema simple initially, avoiding premature optimization  
+     * Implement tenant isolation at the connection level for security  
+  2. **Neo4j Integration**  
+     * Set up Neo4j Aura Free instance with proper authentication  
+     * Create a Neo4j client service in backend for standardized operations  
+     * Implement connection pooling for efficiency  
+     * Add robust error handling and retry logic for transient failures  
+     * Ensure all operations include tenant\_id validation for security  
+  3. **Synchronization System**  
+     * Create a Supabase Edge Function scheduled to run nightly  
+     * Implement incremental sync to only process new/changed data:  
+       * Query Postgres for events, facts, and milestones updated since last sync  
+       * Convert relational data to graph structure  
+       * Execute batched Cypher queries to update Neo4j  
+     * Add transaction support to ensure data integrity  
+     * Implement logging and alerting for sync failures  
+     * Ensure sync process stays within Neo4j Aura Free limits (200k nodes)  
+  4. **Knowledge Graph Queries**  
+     * Create a query interface for common knowledge patterns:  
+       * Routine detection: `MATCH (b:Baby)-[:HAS_EVENT]->(e:Event) WHERE e.type = 'sleep' RETURN e ORDER BY e.timestamp LIMIT 10`  
+       * Preference detection: `MATCH (b:Baby)-[:HAS_FACT]->(f:Fact) WHERE f.category = 'preference' RETURN f`  
+       * Milestone tracking: `MATCH (b:Baby)-[:EXPERIENCED]->(m:Milestone) RETURN m ORDER BY m.date DESC`  
+     * Design queries to support the chat assistant feature  
+     * Create a caching layer for frequently accessed queries  
+     * Implement query rate limiting to prevent overloading  
+  5. **Pattern Detection**  
+     * Develop Cypher queries to detect sleep patterns and feeding routines  
+     * Create algorithms to identify correlations (e.g., sleep quality after certain foods)  
+     * Implement time-based pattern detection (daily, weekly rhythms)  
+     * Support anomaly detection for changes in routine  
+     * Ensure all pattern detection respects tenant boundaries
+
+### **Feature 3: RAG-Powered Chat Assistant**
+
+* **Feature goal**  
+   Provide an AI super-nanny that combines medical evidence with personalized knowledge of the baby to give trustworthy, personalized advice.  
+* **API relationships**  
+  1. Supabase pgvector for RAG implementation  
+  2. Neo4j knowledge graph for personalized context  
+  3. OpenRouter API for flexible LLM selection  
+  4. Medical guidelines corpus stored as vector embeddings  
+  5. Safety rule layer for filtering dangerous queries  
+* **Detailed feature requirements**  
+  1. Support natural language queries about baby's health and development  
+  2. Enable both voice and text input for queries  
+  3. Provide evidence-based responses with clear citations  
+  4. Personalize responses based on baby's history and patterns  
+  5. Implement a pre-screening layer for medical red-flags  
+  6. Limit corpus size to under 50k tokens  
+  7. Apply proper source tagging for filtering (e.g., AAP vs Diary)  
+  8. Provide fallback to general guidance when personalized data insufficient  
+  9. Ensure clear differentiation between evidence-based advice and suggestions  
+  10. Support multi-tenant isolation for all queries and responses  
+* **Detailed implementation guide**  
+  1. **Vector Database Setup**  
+     * Configure Supabase PostgreSQL with pgvector extension  
+     * Create knowledge\_embeddings table with proper indices  
+     * Import trusted medical sources (AAP, NICE, NHS, WebMD guidelines)  
+     * Generate and store embeddings for all reference content  
+     * Implement source tagging for proper attribution and filtering  
+     * Ensure proper tenant isolation for all embeddings  
+  2. **RAG Implementation**  
+     * Create a Supabase Edge Function for handling chat requests  
+     * Implement semantic search using pgvector:  
+        sql
+
+```
+SELECT content, metadata
+FROM knowledge_embeddings
+WHERE tenant_id = :tenant_id
+ORDER BY embedding <-> :query_embedding
+LIMIT 5;
+```
+
+     * 
+
+     * Design a retrieval strategy that balances medical knowledge and personal context  
+     * Implement re-ranking of retrieved documents based on relevance  
+     * Add citation tracking to reference source materials properly  
+     * Create hybrid search that combines vector similarity and keyword matching  
+  3. **LLM Integration with OpenRouter**  
+     * Implement OpenRouter API client in Edge Functions  
+     * Create a model selection strategy based on query complexity:  
+       * Simple queries → faster, cheaper models  
+       * Complex medical questions → more capable models  
+     * Design a unified prompt template with:  
+       * Retrieved context from medical sources  
+       * Personal knowledge about the baby  
+       * Clear instructions for evidence-based responses  
+       * Citation requirements for medical claims  
+     * Implement fallback mechanisms for provider outages  
+     * Add comprehensive error handling for LLM failures  
+  4. **Safety Layer**  
+     * Implement a pre-screening filter for medical red-flags:  
+       * Emergency situations requiring immediate medical attention  
+       * Dangerous advice (sleep positions, medication dosing)  
+       * Mental health crises  
+     * Create a pattern-matching system for dangerous queries  
+     * Design a safe response mechanism for flagged queries  
+     * Implement clear disclaimers about not being medical advice  
+     * Add logging for potentially problematic queries (without PII)  
+  5. **User Interface**  
+     * Build a chat interface with:  
+       * Message history with clear user/assistant distinction  
+       * Voice input option with real-time transcription  
+       * Typing indicator during response generation  
+       * Citation display for medical claims  
+       * Clear differentiation of evidence vs. suggestions  
+     * Implement local storage for chat history  
+     * Add offline support for previously loaded conversations  
+     * Design proper error handling for network issues
+
+### **Feature 4: Timeline View**
+
+* **Feature goal**  
+   Provide a clean, chronological display of baby events that prioritizes meaningful narrative over micro-data points.  
+* **API relationships**  
+  1. Fetches data from Supabase PostgreSQL events table  
+  2. Stores recent days in localStorage for offline access  
+  3. Displays events extracted from voice capture feature  
+  4. Provides context for knowledge graph insights  
+* **Detailed feature requirements**  
+  1. Implement day and week toggle views with summary statistics  
+  2. Create card-based visualization of extracted events  
+  3. Support expandable entries to show full narrative context  
+  4. Cache last 2 days of data in localStorage for offline use  
+  5. Ensure smooth scrolling and navigation on mobile devices  
+  6. Create clear visual hierarchy for different event types  
+  7. Provide quick access to add new voice entries  
+  8. Focus exclusively on events (no milestone hints in this view)  
+  9. Support filtering by event type (feeding, sleep, diaper, etc.)  
+  10. Implement pull-to-refresh for latest data  
+* **Detailed implementation guide**  
+  1. **Data Structure and Fetching**  
+     * Design a normalized data model for efficient fetching:  
+        typescript
+
+```
+interface TimelineEvent {
+  id: string;
+  baby_id: string;
+  type: 'feeding' | 'sleep' | 'diaper' | 'other';
+  timestamp: string;
+  metadata: Record<string, any>;
+  diary_entry_id?: string;
+  diary_text?: string;
+}
+```
+
+     * 
+
+     * Implement efficient data loading with pagination:  
+        sql
+
+```
+SELECT e.*, d.raw_text as diary_text
+FROM events e
+LEFT JOIN diary_entries d ON e.diary_entry_id = d.id
+WHERE e.baby_id = :baby_id AND e.tenant_id = :tenant_id
+AND e.timestamp >= :start_date AND e.timestamp <= :end_date
+ORDER BY e.timestamp DESC
+LIMIT 50 OFFSET :offset;
+```
+
+     * 
+
+     * Create data aggregation queries for summary statistics:  
+        sql
+
+```
+SELECT 
+  COUNT(*) FILTER (WHERE type = 'feeding') as feeding_count,
+  COUNT(*) FILTER (WHERE type = 'sleep') as sleep_count,
+  COUNT(*) FILTER (WHERE type = 'diaper') as diaper_count
+FROM events
+WHERE baby_id = :baby_id AND tenant_id = :tenant_id
+AND timestamp::date = :date;
+```
+
+     * 
+
+     * Add real-time subscription for live updates when app is open  
+  2. **Timeline UI Components**  
+     * Create a responsive timeline layout with:  
+       * Navigation controls for date selection  
+       * Day/week view toggle  
+       * Summary statistics header  
+       * Scrollable event list with virtual rendering for performance  
+     * Implement card-based event visualization:  
+       * Color coding by event type  
+       * Iconography for quick recognition  
+       * Time display with relative formatting  
+       * Expandable cards to show full narrative  
+     * Add smooth animations for card expansion and navigation  
+     * Implement proper skeleton loading states  
+  3. **Offline Support**  
+     * Implement localStorage caching strategy:  
+        typescript
+
+```
+// Store recent timeline events
+const cacheTimelineData = (babyId, date, events) => {
+  const key = `timeline_${babyId}_${date}`;
+  localStorage.setItem(key, JSON.stringify({
+    timestamp: new Date().toISOString(),
+    events
+  }));
+};
+```
+
+     * 
+
+     * Create background sync mechanism for new events  
+     * Add staleness checking for cached data  
+     * Implement visual indicators for offline mode  
+     * Create graceful cache invalidation strategy  
+     * Ensure proper error handling for storage limits  
+  4. **Navigation and Interaction**  
+     * Implement smooth date navigation with:  
+       * Swipe gestures for day changes  
+       * Date picker for jumping to specific dates  
+       * "Today" button for quick return  
+     * Add pull-to-refresh for latest data  
+     * Create easy access to voice recording feature  
+     * Implement filtering controls for event types  
+     * Add search functionality for finding specific events  
+     * Support deep linking to specific dates  
+  5. **Visual Design and Optimization**  
+     * Create a visual hierarchy with:  
+       * Clear date headers  
+       * Proper spacing between event groups  
+       * Minimalist design for readability  
+       * Color system for event categorization  
+     * Optimize rendering performance:  
+       * Implement virtualized lists for long timelines  
+       * Use proper React key management  
+       * Optimize re-renders with memoization  
+       * Implement progressive loading for older data  
+     * Ensure responsive design for all device sizes
+
+### **Feature 5: Evening Digest**
+
+* **Feature goal**  
+   Provide a concise, automated summary of the day's events, patterns, and insights sent to both parents at a consistent time.  
+* **API relationships**  
+  1. Accesses event data from Supabase PostgreSQL  
+  2. Queries Neo4j for pattern insights  
+  3. Uses Resend API for email delivery  
+  4. Runs on scheduled Supabase Edge Functions  
+* **Detailed feature requirements**  
+  1. Generate daily digests with configurable delivery time (default 20:00)  
+  2. Include automatic pattern detection and insights  
+  3. Summarize key metrics for the day (feeding, sleep, mood)  
+  4. Provide personalized tips based on the day's events  
+  5. Support multi-recipient delivery for partner inclusion  
+  6. Create mobile-optimized email templates  
+  7. Focus on actionable insights rather than just data  
+  8. Allow recipients to opt out or customize digest content  
+  9. Include visualizations of daily patterns  
+  10. Provide comparison with previous periods  
+* **Detailed implementation guide**  
+  1. **Digest Generation System**  
+     * Create a scheduled Supabase Edge Function to run daily:  
+        typescript
+
+```
+// Runs at configurable time for each tenant
+export const generateDigests = async () => {
+  // Get all tenants where current time matches their digest time
+  const { data: tenants } = await supabase
+    .from('tenants')
+    .select('id, name, settings')
+    .eq('settings->digest_enabled', true)
+    .filter('settings->digest_time', 'equals', currentHourMinute());
+    
+  // Generate digest for each tenant
+  for (const tenant of tenants) {
+    await generateTenantDigest(tenant);
+  }
+};
+```
+
+     * 
+
+     * Implement data aggregation queries:  
+       * Daily summary statistics  
+       * Comparison with previous days/weeks  
+       * Pattern detection queries  
+     * Create natural language generation for insights  
+     * Add personalization based on baby's development stage  
+  2. **Email Template Design**  
+     * Create responsive email templates:  
+       * Header with baby name and date  
+       * Summary statistics section  
+       * Timeline of key events  
+       * Pattern insights section  
+       * Personalized tip of the day  
+       * Quick links to app  
+     * Implement mobile-first design approach  
+     * Use inline CSS for email compatibility  
+     * Create visualizations for key metrics  
+     * Ensure proper dark/light mode support  
+     * Test across major email clients  
+  3. **Multi-recipient Support**  
+     * Store recipient preferences in database:  
+        sql
+
+```
+CREATE TABLE digest_recipients (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID REFERENCES tenants(id),
+  user_id UUID REFERENCES auth.users(id),
+  email TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+     * 
+
+     * Implement recipient management UI  
+     * Add subscription preferences:  
+       * Delivery time  
+       * Content preferences (events, insights, tips)  
+       * Frequency options (daily, every few days)  
+     * Support unsubscribe links in emails  
+     * Implement email delivery tracking  
+  4. **Insight Generation**  
+     * Create algorithms for pattern detection:  
+       * Sleep duration trends  
+       * Feeding interval analysis  
+       * Diaper frequency monitoring  
+       * Milestone proximity alerts  
+     * Implement comparison with typical patterns  
+     * Create a library of development-stage appropriate tips  
+     * Use Neo4j queries for relationship insights:  
+        cypher
+
+```
+MATCH (b:Baby {id: $baby_id})-[:HAS_EVENT]->(e:Event)
+WHERE e.timestamp >= datetime($start_date) AND e.timestamp <= datetime($end_date)
+WITH e ORDER BY e.timestamp
+WITH collect(e) as events
+RETURN events,
+apoc.coll.frequencies(events.type) as type_frequencies
+```
+
+     * 
+
+     * Implement anomaly detection for unusual patterns  
+  5. **Delivery System**  
+     * Integrate with Resend API for reliable delivery:  
+        typescript
+
+```
+const sendDigestEmail = async (recipient, digestContent) => {
+  return await resend.emails.send({
+    from: 'AI Super-Nanny <digest@example.com>',
+    to: recipient.email,
+    subject: `${digestContent.babyName}'s Daily Digest - ${formatDate(digestContent.date)}`,
+    html: renderDigestTemplate(digestContent),
+  });
+};
+```
+
+     * 
+
+     * Implement retry logic for failed sends  
+     * Add delivery tracking and logging  
+     * Create throttling to prevent email limits  
+     * Implement testing mode for development
+
+### **Feature 6: Multi-tenant Infrastructure**
+
+* **Feature goal**  
+   Ensure complete data isolation between families while maintaining efficient resource usage.  
+* **API relationships**  
+  1. Affects all database tables with tenant\_id columns  
+  2. Integrates with Supabase Auth custom JWT claims  
+  3. Enforces row-level security policies  
+  4. Impacts all API endpoints and data access  
+* **Detailed feature requirements**  
+  1. Add tenant\_id column to all tables from the start  
+  2. Set JWT custom claims in Supabase Auth for tenant identification  
+  3. Implement row-level security policies based on tenant\_id  
+  4. Ensure complete data isolation between families  
+  5. Support efficient query patterns that don't compromise isolation  
+  6. Enable multi-user access within the same tenant  
+  7. Provide tenant management system for administrators  
+  8. Implement tenant-aware backup and restore procedures  
+* **Detailed implementation guide**  
+  1. **Database Schema Design**  
+     * Add tenant\_id to all tables:  
+        sql
+
+```
+CREATE TABLE IF NOT EXISTS tenants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  settings JSONB DEFAULT '{}'::JSONB
+);
+
+CREATE TABLE IF NOT EXISTS babies (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  name TEXT NOT NULL,
+  dob DATE NOT NULL,
+  metadata JSONB DEFAULT '{}'::JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add to all other tables
+```
+
+     * 
+
+     * Create foreign key constraints for referential integrity  
+     * Add appropriate indices for tenant-scoped queries  
+     * Implement cascading deletes where appropriate  
+  2. **JWT Custom Claims**  
+     * Configure Supabase JWT custom claims:  
+        sql
+
+```
+-- In SQL editor, set up JWT claims
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  tenant_id UUID;
+BEGIN
+  -- Create a new tenant for this user
+  INSERT INTO public.tenants (name)
+  VALUES (NEW.email)
+  RETURNING id INTO tenant_id;
+  
+  -- Add tenant_id to user's metadata for JWT claims
+  UPDATE auth.users
+  SET raw_app_meta_data = jsonb_set(
+    raw_app_meta_data,
+    '{tenant_id}',
+    to_jsonb(tenant_id)
+  )
+  WHERE id = NEW.id;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+     * 
+
+     * Verify JWT claims in all API requests  
+     * Create middleware to extract tenant\_id from JWT  
+     * Implement JWT refresh strategy  
+  3. **Row-Level Security**  
+     * Implement RLS policies for all tables:  
+        sql
+
+```
+-- Example for babies table
+ALTER TABLE babies ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY babies_tenant_isolation ON babies
+FOR ALL USING (tenant_id = auth.jwt() -> 'app_metadata' ->> 'tenant_id')::UUID);
+
+-- Apply to all tables
+```
+
+     * 
+
+     * Create specialized policies for shared resources  
+     * Implement tenant verification in all API requests  
+     * Add automatic tenant\_id insertion for new records  
+     * Create audit logging for cross-tenant access attempts  
+  4. **Tenant Management**  
+     * Build administrative interface for tenant management:  
+       * User assignment to tenants  
+       * Tenant creation and deactivation  
+       * Usage statistics by tenant  
+     * Implement invitation system for adding users to tenants  
+     * Create tenant settings management  
+     * Build usage limit enforcement by tenant  
+     * Implement tenant data export for GDPR compliance  
+  5. **Multi-user Access**  
+     * Design user roles within tenants:  
+        sql
+
+```
+CREATE TYPE user_role AS ENUM ('owner', 'parent', 'caregiver', 'viewer');
+
+CREATE TABLE IF NOT EXISTS tenant_users (
+  tenant_id UUID REFERENCES tenants(id),
+  user_id UUID REFERENCES auth.users(id),
+  role user_role NOT NULL DEFAULT 'parent',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, user_id)
+);
+```
+
+     * 
+
+     * Implement permission system based on roles  
+     * Create invitation workflow for adding users  
+     * Add real-time presence indicators  
+     * Support concurrent edits with conflict resolution  
+     * Implement notification system for multi-user collaboration
+
+### **Feature 7: User Authentication and Onboarding**
+
+* **Feature goal**  
+   Provide a seamless authentication experience and guide new users through setting up baby profiles and preferences.  
+* **API relationships**  
+  1. Uses Supabase Auth for authentication  
+  2. Creates records in tenants, babies, and users tables  
+  3. Sets up JWT custom claims for multi-tenant access  
+  4. Prepares the system for first use of other features  
+* **Detailed feature requirements**  
+  1. Support email/password, Google, and Apple authentication methods  
+  2. Implement secure password reset flow  
+  3. Guide new users through baby profile creation  
+  4. Collect essential developmental milestones during onboarding  
+  5. Support multiple baby profiles per account  
+  6. Enable partner/caregiver invitation system  
+  7. Implement proper session management  
+  8. Support passwordless magic link login  
+  9. Ensure smooth cross-device login experience  
+  10. Provide proper error handling and feedback  
+* **Detailed implementation guide**  
+  1. **Authentication System**  
+     * Configure Supabase Auth with multiple providers:  
+        typescript
+
+```
+// Email/password signup
+const signUp = async (email, password) => {
+  return await supabase.auth.signUp({
+    email,
+    password,
+  });
+};
+
+// Social auth
+const signInWithGoogle = async () => {
+  return await supabase.auth.signInWithOAuth({
+    provider: 'google',
+  });
+};
+
+// Magic link
+const signInWithMagicLink = async (email) => {
+  return await supabase.auth.signInWithOtp({
+    email,
+  });
+};
+```
+
+     * 
+
+     * Implement secure session management  
+     * Create responsive auth UI components  
+     * Add proper validation and error handling  
+     * Implement auth state persistence across page reloads  
+  2. **Onboarding Flow**  
+     * Design a step-by-step onboarding wizard:  
+       1. Welcome screen and value proposition  
+       2. Basic parent information  
+       3. Baby profile creation (name, DOB, sex)  
+       4. Key developmental milestones to date  
+       5. Invitation to add partner/caregivers  
+       6. App tour and feature introduction  
+     * Implement progress tracking and resumable flow  
+     * Create engaging UI with illustrations  
+     * Add validation for each step  
+     * Support skipping optional steps  
+  3. **Baby Profile Management**  
+     * Create CRUD operations for baby profiles:  
+        typescript
+
+```
+const createBabyProfile = async (babyData) => {
+  return await supabase
+    .from('babies')
+    .insert({
+      name: babyData.name,
+      dob: babyData.dob,
+      metadata: {
+        sex: babyData.sex,
+        birth_weight: babyData.birthWeight,
+        // other metadata
+      }
+    })
+    .select();
+};
+```
+
+     * 
+
+     * Support multiple babies per account  
+     * Implement profile switching mechanism  
+     * Add baby photo upload capability  
+     * Create birthday and age calculation utilities  
+     * Implement developmental age adjustments for premature babies
+
+4. **Partner/Caregiver Invitation**  
+   * Create invitation system:  
+      typescript
+
+```
+const inviteUser = async (email, role) => {
+  // Generate invitation code
+  const code = generateUniqueCode();
+  
+  // Store invitation
+  await supabase.from('invitations').insert({
+    email,
+    role,
+    code,
+    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+  });
+  
+  // Send invitation email
+  await resend.emails.send({
+    from: 'AI Super-Nanny <invites@example.com>',
+    to: email,
+    subject: 'Join Your Family on AI Super-Nanny',
+    html: renderInviteTemplate({ code }),
+  });
+};
+```
+
+   * 
+
+   * Implement invitation acceptance flow  
+   * Create role-based access control  
+   * Add invitation management UI  
+   * Support invitation revocation  
+   * Implement invitation expiration  
+5. **Session Management**  
+   * Implement secure token storage:  
+      typescript
+
+```
+// Store session in secure httpOnly cookie
+const storeSession = (session) => {
+  document.cookie = `session=${session.access_token}; path=/; max-age=${session.expires_in}; HttpOnly; SameSite=Strict`;
+};
+```
+
+   * 
+
+   * Create session refresh mechanism  
+   * Implement automatic token refresh  
+   * Add idle timeout with warning  
+   * Support manual logout across devices  
+   * Implement proper session termination  
+   * Add JWT verification on all API endpoints
+
+### **Feature 8: Offline Support & Sync**
+
+* **Feature goal**  
+   Enable core functionality to work seamlessly when offline and synchronize data when connection is restored.  
+* **API relationships**  
+  1. Uses localStorage for offline caching  
+  2. Implements background sync with Supabase PostgreSQL  
+  3. Integrates with voice capture for offline recording  
+  4. Supports timeline viewing without connectivity  
+* **Detailed feature requirements**  
+  1. Cache critical data (recent timeline, baby profiles) for offline access  
+  2. Support voice recording while offline  
+  3. Queue uploads for when connectivity is restored  
+  4. Implement conflict resolution strategy  
+  5. Provide clear UI indicators for offline mode  
+  6. Implement progressive enhancement approach  
+  7. Support partial functionality degradation  
+  8. Handle storage limitations gracefully  
+  9. Ensure proper error recovery  
+  10. Maintain data consistency across sync operations  
+* **Detailed implementation guide**  
+  1. **Service Worker Implementation**  
+     * Create a service worker for offline capabilities:  
+        javascript
+
+```javascript
+// Register service worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(registration => console.log('SW registered: ', registration.scope))
+      .catch(error => console.log('SW registration failed: ', error));
+  });
+}
+
+// In service-worker.js
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open('ai-super-nanny-v1').then(cache => {
+      return cache.addAll([
+        '/',
+        '/index.html',
+        '/static/js/main.js',
+        '/static/css/main.css',
+        '/static/media/logo.png',
+        // Add other static assets
+      ]);
+    })
+  );
+});
+
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request).then(response => {
+      return response || fetch(event.request).catch(() => {
+        // Return offline fallback for navigation requests
+        if (event.request.mode === 'navigate') {
+          return caches.match('/offline.html');
+        }
+        return null;
+      });
+    })
+  );
+});
+```
+
+     * 
+
+     * Implement cache strategies for different asset types  
+     * Create offline fallback pages  
+     * Add versioning for cache updates  
+     * Implement background sync registration  
+  2. **Data Caching Strategy**  
+     * Implement localStorage caching for critical data:  
+        typescript
+
+```
+const cacheBabyData = async (babyId) => {
+  // Fetch baby profile
+  const { data: baby } = await supabase
+    .from('babies')
+    .select('*')
+    .eq('id', babyId)
+    .single();
+    
+  // Cache in localStorage
+  localStorage.setItem(`baby_${babyId}`, JSON.stringify({
+    data: baby,
+    timestamp: new Date().toISOString()
+  }));
+  
+  // Fetch recent events (last 2 days)
+  const twoDaysAgo = new Date();
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+  
+  const { data: events } = await supabase
+    .from('events')
+    .select('*')
+    .eq('baby_id', babyId)
+    .gte('timestamp', twoDaysAgo.toISOString())
+    .order('timestamp', { ascending: false });
+    
+  // Cache in localStorage
+  localStorage.setItem(`events_${babyId}`, JSON.stringify({
+    data: events,
+    timestamp: new Date().toISOString()
+  }));
+};
+```
+
+     * 
+
+     * Create cache invalidation strategy  
+     * Implement priority-based caching for limited storage  
+     * Add TTL (time-to-live) for cached data  
+     * Create memory management strategy for large datasets  
+  3. **Offline Voice Recording**  
+     * Implement offline recording capability:  
+        typescript
+
+```
+const recordOfflineVoice = async () => {
+  // Record audio using Web Audio API
+  const audioBlob = await captureAudio();
+  
+  // Generate temporary local ID
+  const tempId = generateUUID();
+  
+  // Store in IndexedDB for persistence
+  await db.audioRecordings.add({
+    id: tempId,
+    blob: audioBlob,
+    timestamp: new Date().toISOString(),
+    synced: false
+  });
+  
+  // Add to sync queue
+  await db.syncQueue.add({
+    type: 'audio_upload',
+    id: tempId,
+    timestamp: new Date().toISOString()
+  });
+  
+  return tempId;
+};
+```
+
+     * 
+
+     * Create UI for displaying pending uploads  
+     * Implement background processing for offline recordings  
+     * Add storage management for audio blobs  
+     * Implement compression for offline storage efficiency  
+     * Create playback capability for pending recordings  
+  4. **Sync Queue & Background Sync**  
+     * Implement a sync queue system:  
+        typescript
+
+```
+// Register background sync
+const registerSync = async () => {
+  if ('serviceWorker' in navigator && 'SyncManager' in window) {
+    const registration = await navigator.serviceWorker.ready;
+    try {
+      await registration.sync.register('sync-data');
+      console.log('Sync registered');
+    } catch (err) {
+      console.log('Sync registration failed:', err);
+    }
+  } else {
+    // Fall back to immediate sync attempt
+    syncData();
+  }
+};
+
+// In service worker
+self.addEventListener('sync', event => {
+  if (event.tag === 'sync-data') {
+    event.waitUntil(syncData());
+  }
+});
+
+// Sync implementation
+const syncData = async () => {
+  const db = await openDB('ai-super-nanny', 1);
+  const queue = await db.getAll('syncQueue');
+  
+  for (const item of queue) {
+    try {
+      if (item.type === 'audio_upload') {
+        await syncAudioRecording(item.id);
+      } else if (item.type === 'event_create') {
+        await syncEventCreate(item.id);
+      }
+      // Remove from queue after successful sync
+      await db.delete('syncQueue', item.id);
+    } catch (error) {
+      console.error('Sync failed for item:', item, error);
+      // Keep in queue for retry
+    }
+  }
+};
+```
+
+     * 
+
+     * Implement retry strategy with exponential backoff  
+     * Add conflict resolution for concurrent edits  
+     * Create sync status indicators in UI  
+     * Implement priority-based sync for critical data  
+     * Add manual sync trigger option  
+  5. **Conflict Resolution**  
+     * Implement last-write-wins strategy with timestamps:  
+        typescript
+
+```
+const resolveConflict = async (localEvent, serverEvent) => {
+  if (new Date(localEvent.updated_at) > new Date(serverEvent.updated_at)) {
+    // Local changes are newer, push to server
+    return await supabase
+      .from('events')
+      .update({
+        ...localEvent,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', localEvent.id);
+  } else {
+    // Server changes are newer, update local cache
+    await db.events.put({
+      ...serverEvent,
+      synced: true
+    });
+    return serverEvent;
+  }
+};
+```
+
+     * 
+
+     * Add version tracking for sync operations  
+     * Implement three-way merge for complex conflicts  
+     * Create UI for manual conflict resolution when needed  
+     * Add audit trail for sync operations  
+     * Implement synchronization locks for critical operations
+
+### **Feature 9: Monitoring and Analytics**
+
+* **Feature goal**  
+   Implement comprehensive monitoring and analytics to track usage, detect issues, and improve user experience.  
+* **API relationships**  
+  1. Uses Sentry for error tracking  
+  2. Implements LangSmith for LLM monitoring  
+  3. Records usage statistics in Supabase  
+  4. Provides insights for product improvements  
+* **Detailed feature requirements**  
+  1. Track key usage metrics (voice recordings, events, chat queries)  
+  2. Monitor error rates and performance bottlenecks  
+  3. Analyze LLM performance and query patterns  
+  4. Implement proper PII (Personally Identifiable Information) handling  
+  5. Create daily and monthly usage summaries  
+  6. Track feature adoption and engagement  
+  7. Monitor infrastructure health  
+  8. Implement proper logging for debugging  
+  9. Create dashboards for key metrics  
+  10. Support tenant-level analytics  
+* **Detailed implementation guide**  
+  1. **Usage Tracking System**  
+     * Implement usage logging table:  
+        sql
+
+```
+CREATE TABLE IF NOT EXISTS usage_stats (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID REFERENCES tenants(id),
+  date DATE DEFAULT CURRENT_DATE,
+  minutes_audio FLOAT DEFAULT 0,
+  tokens_in INTEGER DEFAULT 0,
+  tokens_out INTEGER DEFAULT 0,
+  api_calls INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+     * 
+
+     * Create atomic increment functions:  
+        typescript
+
+```
+const logUsage = async (metric, value) => {
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Upsert usage record
+  await supabase.rpc('increment_usage', {
+    p_tenant_id: getTenantId(),
+    p_date: today,
+    p_metric: metric,
+    p_value: value
+  });
+};
+```
+
+     * 
+
+     * Add tracking to key API endpoints  
+     * Implement batch logging for performance  
+     * Create usage aggregation queries  
+     * Implement rate limiting based on usage tiers  
+  2. **Error Tracking with Sentry**  
+     * Configure Sentry integration:  
+        typescript
+
+```
+import * as Sentry from '@sentry/nextjs';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  tracesSampleRate: 0.2,
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0,
+  integrations: [
+    new Sentry.Replay({
+      maskAllText: true,
+      blockAllMedia: true,
+    }),
+  ],
+});
+```
+
+     * 
+
+     * Implement custom error boundaries  
+     * Add breadcrumbs for user actions  
+     * Configure PII scrubbing  
+     * Implement custom context for errors  
+     * Create alert rules for critical issues  
+     * Add release tracking for version identification  
+  3. **LLM Monitoring with LangSmith**  
+     * Configure LangSmith integration:  
+        typescript
+
+```
+import { Client } from 'langsmith';
+
+const langsmith = new Client({
+  apiKey: process.env.LANGSMITH_API_KEY,
+  projectName: process.env.LANGSMITH_PROJECT,
+});
+
+const trackLLMQuery = async (query, context, response) => {
+  return await langsmith.createRun({
+    name: 'chat_query',
+    inputs: {
+      query,
+      context: sanitizeContext(context), // Remove PII
+    },
+    outputs: {
+      response: sanitizeResponse(response), // Remove PII
+    },
+    runtime: {
+      startTime: new Date(),
+    },
+  });
+};
+```
+
+     * 
+
+     * Implement prompt template tracking  
+     * Add feedback collection for responses  
+     * Create performance metrics for LLM calls  
+     * Implement token usage tracking  
+     * Add anonymized query logging for improvement  
+  4. **Analytics Dashboard**  
+     * Design key metrics dashboard:  
+       * Daily active users  
+       * Voice recording usage  
+       * Chat query volume  
+       * Event entry count  
+       * Error rates  
+       * Performance metrics  
+     * Implement tenant-level filtering  
+     * Create time-based trend analysis  
+     * Add export capabilities for reports  
+     * Implement access controls for analytics  
+     * Create automated reporting system  
+  5. **Infrastructure Monitoring**  
+     * Implement health check endpoints:  
+        typescript
+
+```
+app.get('/api/health', (req, res) => {
+  const checks = {
+    database: checkDatabaseConnection(),
+    neo4j: checkNeo4jConnection(),
+    storage: checkStorageAvailability(),
+    edge_functions: checkEdgeFunctions(),
+  };
+  
+  const allHealthy = Object.values(checks).every(check => check.status === 'healthy');
+  
+  res.status(allHealthy ? 200 : 503).json({
+    status: allHealthy ? 'healthy' : 'unhealthy',
+    checks,
+    timestamp: new Date().toISOString(),
+  });
+});
+```
+
+     * 
+
+     * Set up automated monitoring with alerts  
+     * Implement performance benchmarking  
+     * Create resource usage tracking  
+     * Add dependency health monitoring  
+     * Implement log aggregation system  
+     * Create incident response workflow
+
+### **Feature 10: GDPR and Privacy Compliance**
+
+* **Feature goal**  
+   Ensure the application complies with privacy regulations including GDPR, with clear data handling policies and user controls.  
+* **API relationships**  
+  1. Integrates with all data storage systems  
+  2. Provides data export and deletion capabilities  
+  3. Implements consent management  
+  4. Controls data retention policies  
+* **Detailed feature requirements**  
+  1. Implement data export functionality for user data  
+  2. Support complete account deletion  
+  3. Create clear privacy policy and consent mechanisms  
+  4. Implement data retention policies (24h for voice recordings)  
+  5. Store only necessary data for each feature  
+  6. Provide transparency about data usage  
+  7. Implement proper consent tracking  
+  8. Support right to be forgotten  
+  9. Create data processing audit logs  
+  10. Design privacy-by-default settings  
+* **Detailed implementation guide**  
+  1. **Data Export System**  
+     * Create comprehensive data export function:  
+        typescript
+
+```
+const exportUserData = async (userId, tenantId) => {
+  // Collect all user data
+  const userData = {
+    profile: await fetchUserProfile(userId),
+    babies: await fetchBabyProfiles(tenantId),
+    events: await fetchAllEvents(tenantId),
+    diaryEntries: await fetchAllDiaryEntries(tenantId),
+    chatHistory: await fetchChatHistory(tenantId),
+  };
+  
+  // Generate JSON export file
+  const exportJson = JSON.stringify(userData, null, 2);
+  
+  // Create downloadable file
+  const blob = new Blob([exportJson], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  return {
+    url,
+    filename: `data-export-${new Date().toISOString()}.json`,
+  };
+};
+```
+
+     * 
+
+     * Implement admin export tool for GDPR requests  
+     * Create CSV/JSON export options  
+     * Add progress tracking for large exports  
+     * Implement rate limiting for export requests  
+     * Create email delivery for large data exports  
+  2. **Account Deletion**  
+     * Implement cascading deletion workflow:  
+        typescript
+
+```
+const deleteUserAccount = async (userId, tenantId) => {
+  // Begin transaction
+  const { error } = await supabase.rpc('delete_user_data', {
+    user_id: userId,
+    tenant_id: tenantId
+  });
+  
+  if (error) throw error;
+  
+  // Delete auth user if this was the last tenant
+  const { data: remainingTenants } = await supabase
+    .from('tenant_users')
+    .select('tenant_id')
+    .eq('user_id', userId);
+    
+  if (remainingTenants.length === 0) {
+    await supabase.auth.admin.deleteUser(userId);
+  }
+  
+  return { success: true };
+};
+```
+
+     * 
+
+     * Create confirmation workflow with cooling-off period  
+     * Implement partial data deletion options  
+     * Create audit trail for deletion requests  
+     * Implement backup cleanup for deleted data  
+     * Add anonymization option as alternative to deletion  
+  3. **Consent Management**  
+     * Create consent tracking system:  
+        sql
+
+```
+CREATE TABLE IF NOT EXISTS user_consents (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id),
+  consent_type TEXT NOT NULL,
+  granted BOOLEAN NOT NULL,
+  timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  ip_address TEXT,
+  user_agent TEXT
+);
+```
+
+     * 
+
+     * Implement consent UI components:  
+       * Cookie consent banner  
+       * Feature-specific consent toggles  
+       * Email marketing preferences  
+       * Data usage explanations  
+     * Create consent version tracking  
+     * Implement re-consent workflows for policy updates  
+     * Add consent audit trail  
+     * Create consent-based feature enabling/disabling  
+  4. **Data Retention**  
+     * Implement automatic purging for temporary data:  
+        typescript
+
+```
+// Run daily to purge expired audio files
+const purgeExpiredAudio = async () => {
+  // Find expired audio entries
+  const { data: expiredEntries } = await supabase
+    .from('diary_entries')
+    .select('id, audio_url')
+    .lt('audio_expires_at', new Date().toISOString())
+    .is('audio_url', 'not.null');
+    
+  // Delete from storage
+  for (const entry of expiredEntries) {
+    await supabase
+      .storage
+      .from('audio-recordings')
+      .remove([getPathFromUrl(entry.audio_url)]);
+      
+    // Update database record
+    await supabase
+      .from('diary_entries')
+      .update({
+        audio_url: null,
+        audio_expires_at: null
+      })
+      .eq('id', entry.id);
+  }
+};
+```
+
+     * 
+
+     * Create configurable retention policies  
+     * Implement data anonymization for old records  
+     * Add storage cleanup jobs  
+     * Create data aging reports  
+     * Implement data minimization techniques  
+     * Add automated compliance checking  
+  5. **Privacy by Design**  
+     * Implement privacy-first default settings:  
+       * Minimal data collection by default  
+       * Automatic data expiration  
+       * Local processing where possible  
+       * Encrypted storage for sensitive data  
+     * Create privacy impact assessment documentation  
+     * Implement data flow documentation  
+     * Add privacy notices at data collection points  
+     * Create third-party data sharing controls  
+     * Implement data processing records  
+     * Design secure data transit mechanisms
+
+By implementing these detailed features, the AI Super-Nanny application will provide a comprehensive solution for parents to track their baby's development, capture daily events through voice recordings, access personalized advice, and maintain a meaningful timeline of their child's growth.

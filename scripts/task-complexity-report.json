@@ -1,0 +1,131 @@
+{
+  "meta": {
+    "generatedAt": "2025-05-10T23:03:52.015Z",
+    "tasksAnalyzed": 15,
+    "thresholdScore": 5,
+    "projectName": "Taskmaster",
+    "usedResearch": true
+  },
+  "complexityAnalysis": [
+    {
+      "taskId": 1,
+      "taskTitle": "Project Setup and Configuration",
+      "complexityScore": 5,
+      "recommendedSubtasks": 7,
+      "expansionPrompt": "Break down the Project Setup and Configuration task into 7 subtasks, each with a clear deliverable, acceptance criteria, and estimated effort. Include specific steps for Next.js initialization, Tailwind CSS setup, dependency installation, code quality tools configuration, directory structure implementation, layout component creation, and Git repository setup.",
+      "reasoning": "Medium complexity as it involves standard project initialization steps with well-documented technologies. The task already has 7 clear components that can be directly converted to subtasks. Each component is relatively straightforward but requires attention to detail for proper configuration."
+    },
+    {
+      "taskId": 2,
+      "taskTitle": "PWA Configuration",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Divide the PWA Configuration task into 5 subtasks focusing on: (1) manifest and basic PWA setup, (2) service worker implementation, (3) offline capabilities and caching strategies, (4) installation and notification features, and (5) cross-device testing and optimization. For each subtask, include specific technical requirements and testing criteria.",
+      "reasoning": "Higher complexity due to service worker implementation, caching strategies, and cross-browser compatibility concerns. PWA configuration requires careful testing across different environments and handling various edge cases. The 9 details can be logically grouped into 5 cohesive subtasks."
+    },
+    {
+      "taskId": 3,
+      "taskTitle": "Supabase Integration",
+      "complexityScore": 8,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the Supabase Integration task into 4 comprehensive subtasks: (1) initial setup and environment configuration, (2) database schema design and implementation, (3) authentication system configuration, and (4) storage and real-time functionality setup. Include specific technical requirements, security considerations, and testing criteria for each subtask.",
+      "reasoning": "High complexity due to database design, security configurations, and integration of multiple Supabase services. Requires careful planning for data relationships, security policies, and API design. The task involves both frontend and backend considerations with potential security implications."
+    },
+    {
+      "taskId": 4,
+      "taskTitle": "User Authentication System",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Divide the User Authentication System task into 4 subtasks: (1) authentication UI components development, (2) authentication logic and session management implementation, (3) protected routes and middleware setup, and (4) account management features (verification, recovery, preferences). For each subtask, specify the components needed, security requirements, and testing scenarios.",
+      "reasoning": "High complexity due to security implications and multiple authentication flows. Requires careful implementation of session management, protected routes, and error handling. The UI components and logic can be grouped into logical subtasks that build upon each other."
+    },
+    {
+      "taskId": 5,
+      "taskTitle": "Voice Capture Implementation",
+      "complexityScore": 9,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Break down the Voice Capture Implementation task into 5 subtasks: (1) audio recording interface and controls, (2) waveform visualization development, (3) audio processing and optimization, (4) storage integration and file management, and (5) cross-device compatibility and error handling. For each subtask, include technical specifications, performance requirements, and testing scenarios.",
+      "reasoning": "Very high complexity due to browser API integration, real-time visualization, audio processing, and device compatibility concerns. Requires working with low-level browser APIs and handling various permission scenarios and device capabilities. Performance optimization for audio processing adds additional complexity."
+    },
+    {
+      "taskId": 6,
+      "taskTitle": "Timeline Component Development",
+      "complexityScore": 8,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Divide the Timeline Component Development task into 5 subtasks: (1) core timeline component and view options, (2) event card components and rendering, (3) data loading, pagination, and performance optimization, (4) filtering, search, and interaction features, and (5) event management operations (view, edit, delete). For each subtask, specify UI/UX requirements, performance considerations, and testing criteria.",
+      "reasoning": "High complexity due to interactive UI elements, performance considerations with large datasets, and complex state management. The timeline requires efficient rendering strategies and careful UX design for intuitive interaction. Animation and drag-drop functionality add additional complexity."
+    },
+    {
+      "taskId": 7,
+      "taskTitle": "Navigation System Implementation",
+      "complexityScore": 6,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the Navigation System Implementation task into 4 subtasks: (1) navigation bar component development, (2) routing and transition implementation, (3) responsive design and accessibility features, and (4) navigation guards and deep linking support. For each subtask, include design specifications, interaction requirements, and testing scenarios.",
+      "reasoning": "Medium complexity with some challenging aspects around animations, accessibility, and route protection. The navigation system is a critical component that affects the entire application but follows established patterns. The task involves both UI development and routing logic."
+    },
+    {
+      "taskId": 8,
+      "taskTitle": "Statistics and Analytics Feature",
+      "complexityScore": 8,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Divide the Statistics and Analytics Feature task into 4 subtasks: (1) charting library integration and base visualizations, (2) data aggregation and analysis functions, (3) filtering, interactivity, and responsive design, and (4) insights generation and data export capabilities. For each subtask, specify data requirements, performance considerations, and testing criteria.",
+      "reasoning": "High complexity due to data processing, visualization implementation, and insights generation. Requires careful performance optimization for data calculations and rendering. The feature involves both algorithmic work for data analysis and UI development for visualization."
+    },
+    {
+      "taskId": 9,
+      "taskTitle": "User Profile and Settings",
+      "complexityScore": 6,
+      "recommendedSubtasks": 3,
+      "expansionPrompt": "Break down the User Profile and Settings task into 3 subtasks: (1) profile display and editing functionality, (2) application settings and preferences management, and (3) account management features (privacy, export, deletion). For each subtask, include UI requirements, data management considerations, and testing scenarios.",
+      "reasoning": "Medium complexity with standard patterns for profile management and settings. The task involves form handling, data persistence, and some sensitive operations like account deletion. The features follow established patterns but require careful implementation for user data management."
+    },
+    {
+      "taskId": 10,
+      "taskTitle": "Chat Functionality Implementation",
+      "complexityScore": 8,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Divide the Chat Functionality Implementation task into 4 subtasks: (1) chat interface and message components, (2) real-time messaging and persistence, (3) media sharing and message types, and (4) AI assistant integration and notifications. For each subtask, specify technical requirements, performance considerations, and testing scenarios.",
+      "reasoning": "High complexity due to real-time functionality, different message types, and AI integration. Requires careful implementation of real-time subscriptions and message synchronization. The feature involves both UI development and backend integration with potential performance implications."
+    },
+    {
+      "taskId": 11,
+      "taskTitle": "Voice-to-Text Transcription",
+      "complexityScore": 8,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the Voice-to-Text Transcription task into 4 subtasks: (1) speech-to-text API selection and integration, (2) transcription process and UI implementation, (3) editing and language support features, and (4) search indexing and optimization. For each subtask, include technical requirements, performance considerations, and testing criteria with various audio samples.",
+      "reasoning": "High complexity due to integration with external APIs, language processing, and accuracy optimization. Requires careful error handling and fallback mechanisms. The feature involves both technical integration challenges and UI considerations for displaying and editing transcriptions."
+    },
+    {
+      "taskId": 12,
+      "taskTitle": "Offline Mode Implementation",
+      "complexityScore": 9,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Divide the Offline Mode Implementation task into 5 subtasks: (1) local storage implementation with IndexedDB, (2) synchronization and conflict resolution mechanisms, (3) offline UI indicators and messaging, (4) background sync and retry strategies, and (5) comprehensive testing across network conditions. For each subtask, specify technical requirements, edge cases to handle, and testing scenarios.",
+      "reasoning": "Very high complexity due to data synchronization challenges, conflict resolution, and extensive testing requirements. Requires careful design of offline-first architecture and edge case handling. The feature involves complex state management and must work reliably under various network conditions."
+    },
+    {
+      "taskId": 13,
+      "taskTitle": "Notifications System",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the Notifications System task into 4 subtasks: (1) push notification infrastructure setup, (2) notification permission and preference management, (3) notification types, templates, and actions, and (4) scheduling and history features. For each subtask, include technical requirements, user experience considerations, and cross-device testing criteria.",
+      "reasoning": "High complexity due to browser API integration, permission handling, and cross-device compatibility. Requires server-side implementation for sending notifications and client-side handling. The feature involves both technical challenges and careful UX design for permission requests."
+    },
+    {
+      "taskId": 14,
+      "taskTitle": "Accessibility Improvements",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Divide the Accessibility Improvements task into 4 subtasks: (1) accessibility audit and semantic HTML implementation, (2) keyboard navigation and focus management, (3) screen reader support and ARIA attributes, and (4) visual accessibility and alternative inputs. For each subtask, include specific WCAG requirements, testing methodologies, and documentation needs.",
+      "reasoning": "High complexity due to the comprehensive nature of accessibility requirements and testing across different assistive technologies. Requires detailed knowledge of WCAG standards and assistive technology behavior. The task involves both technical implementation and extensive testing with various tools."
+    },
+    {
+      "taskId": 15,
+      "taskTitle": "Performance Optimization",
+      "complexityScore": 8,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Break down the Performance Optimization task into 5 subtasks: (1) code splitting and lazy loading implementation, (2) asset and image optimization, (3) list virtualization and UI performance, (4) data and query optimization, and (5) performance monitoring and progressive loading. For each subtask, specify technical approaches, measurement methodologies, and performance targets.",
+      "reasoning": "High complexity due to the technical depth required across various optimization techniques and the need for measurable improvements. Requires profiling and optimization across the entire application stack. The task involves both frontend and backend optimizations with careful measurement and testing."
+    }
+  ]
+}
