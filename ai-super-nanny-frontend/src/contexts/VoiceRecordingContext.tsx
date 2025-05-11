@@ -1,10 +1,11 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { audioProcessingService, TranscriptionResult } from '@/services/audioProcessingService';
 
 // Define event type for better type checking
-export type EventType = 'feeding' | 'sleep' | 'diaper' | 'milestone';
+export type EventType = 'feeding' | 'sleep' | 'diaper' | 'milestone' | 'measurement' | 'bath' | 'medication' | 'activity' | 'note';
 
 export interface TimelineEvent {
   id: string;
@@ -20,18 +21,14 @@ export interface TimelineEvent {
 export type RecordingState = 'idle' | 'recording' | 'processing' | 'completion';
 
 interface VoiceRecordingContextType {
-  // State
   recordingState: RecordingState;
   recordingDuration: number;
-  capturedEvent: TimelineEvent | null;
-  
-  // Actions
+  formatDuration: (seconds: number) => string;
   startRecording: () => void;
   stopRecording: () => void;
-  resetRecording: () => void;
-  
-  // Utilities
-  formatDuration: (seconds: number) => string;
+  lastEventId: string | null;
+  resetRecordingState: () => void;
+  processingError: string | null;
 }
 
 const VoiceRecordingContext = createContext<VoiceRecordingContextType | undefined>(undefined);
@@ -56,8 +53,10 @@ export const VoiceRecordingProvider: React.FC<VoiceRecordingProviderProps> = ({
   const router = useRouter();
   
   // State
-  const [recordingState, setRecordingState] = useState<RecordingState>(initialState);
-  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  const [lastEventId, setLastEventId] = useState<string | null>(null);
+  const [processingError, setProcessingError] = useState<string | null>(null);
   const [capturedEvent, setCapturedEvent] = useState<TimelineEvent | null>(
     initialState === 'completion' ? {
       id: `event-${Date.now()}`,
@@ -68,6 +67,11 @@ export const VoiceRecordingProvider: React.FC<VoiceRecordingProviderProps> = ({
       isNew: true
     } : null
   );
+  
+  // Media recorder references
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
   
   // Handle recording duration timer
   useEffect(() => {
@@ -86,6 +90,34 @@ export const VoiceRecordingProvider: React.FC<VoiceRecordingProviderProps> = ({
     };
   }, [recordingState]);
   
+  // Clean up media resources when component unmounts
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+      }
+    };
+  }, []);
+  
+  // Add a timeout to prevent getting stuck in processing state
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    
+    if (recordingState === 'processing') {
+      timeout = setTimeout(() => {
+        if (recordingState === 'processing') {
+          console.error('Processing timeout - falling back to idle state');
+          setProcessingError('Processing timeout - please try again');
+          setRecordingState('idle');
+        }
+      }, 30000); // 30 seconds timeout
+    }
+    
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [recordingState]);
+  
   // Format recording duration as MM:SS
   const formatDuration = useCallback((seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -93,86 +125,103 @@ export const VoiceRecordingProvider: React.FC<VoiceRecordingProviderProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }, []);
   
-  // Actions
-  const startRecording = useCallback(() => {
-    setRecordingState('recording');
-    setRecordingDuration(0);
-    
-    // Simulate haptic feedback
-    if (navigator.vibrate) {
-      navigator.vibrate(50);
+  // Handle recording completion
+  const handleRecordingComplete = async (audioBlob: Blob) => {
+    try {
+      setProcessingError(null);
+      setRecordingState('processing');
+      
+      // Process the audio recording
+      const result = await audioProcessingService.processAudioRecording(audioBlob, recordingDuration);
+      
+      if (result.success && result.eventId) {
+        setLastEventId(result.eventId);
+        setRecordingState('completion');
+      } else {
+        console.error('Failed to process recording:', result.error);
+        setProcessingError(result.error || 'Failed to process recording');
+        setRecordingState('idle');
+      }
+    } catch (error) {
+      console.error('Error in handleRecordingComplete:', error);
+      setProcessingError(error instanceof Error ? error.message : 'Unknown error occurred');
+      setRecordingState('idle');
     }
-  }, []);
+  };
+  
+  // Actions
+  const startRecording = useCallback(async () => {
+    try {
+      setProcessingError(null);
+      setRecordingDuration(0);
+      audioChunksRef.current = [];
+      setRecordingState('recording');
+      
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
+      // Create a new MediaRecorder instance
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      // Set up event handlers
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+      
+      mediaRecorder.onstop = () => {
+        // Create a blob from the recorded audio chunks
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/m4a' });
+        handleRecordingComplete(blob);
+      };
+      
+      // Start the recording
+      mediaRecorder.start();
+      
+      // Haptic feedback
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    } catch (error: any) {
+      console.error('Error starting recording:', error);
+      setProcessingError(error.message || 'Could not access microphone');
+    }
+  }, [handleRecordingComplete, recordingDuration]);
   
   const stopRecording = useCallback(() => {
     setRecordingState('processing');
     
-    // Simulate processing delay
-    setTimeout(() => {
-      // Randomly select an event type to demonstrate different types
-      const eventTypes: EventType[] = ['feeding', 'sleep', 'diaper'];
-      const randomType = eventTypes[Math.floor(Math.random() * eventTypes.length)];
-      
-      // Create event data based on type
-      let description = '';
-      switch (randomType) {
-        case 'feeding':
-          description = 'Bottle feeding, 5oz formula, baby seemed hungry';
-          break;
-        case 'sleep':
-          description = 'Nap time, slept for 1 hour 20 minutes';
-          break;
-        case 'diaper':
-          description = 'Wet diaper, changed';
-          break;
-        default:
-          description = 'New event recorded';
-      }
-      
-      // Create new event data
-      const newEvent: TimelineEvent = {
-        id: `event-${Date.now()}`,
-        type: randomType,
-        time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        description: description,
-        hasDetails: true,
-        isNew: true
-      };
-      
-      // Store the event in localStorage to retrieve it in the timeline
-      try {
-        const existingEvents = localStorage.getItem('timelineEvents');
-        const events = existingEvents ? JSON.parse(existingEvents) : [];
-        events.push(newEvent);
-        localStorage.setItem('timelineEvents', JSON.stringify(events));
-      } catch (error) {
-        console.error('Failed to store event in localStorage:', error);
-      }
-      
-      setCapturedEvent(newEvent);
-      setRecordingState('completion');
-    }, 1500);
-  }, [router]);
+    // Stop the media recorder if it's active
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    // Stop all tracks in the stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+    }
+  }, []);
   
-  const resetRecording = useCallback(() => {
+  const resetRecordingState = useCallback(() => {
     setRecordingState('idle');
     setRecordingDuration(0);
+    setLastEventId(null);
     setCapturedEvent(null);
+    setProcessingError(null);
   }, []);
   
   const value = {
-    // State
     recordingState,
     recordingDuration,
-    capturedEvent,
-    
-    // Actions
+    formatDuration,
     startRecording,
     stopRecording,
-    resetRecording,
-    
-    // Utilities
-    formatDuration
+    lastEventId,
+    resetRecordingState,
+    processingError
   };
   
   return (

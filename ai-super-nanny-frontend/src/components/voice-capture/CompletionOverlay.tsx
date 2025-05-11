@@ -12,9 +12,9 @@ interface CompletionOverlayProps {
 
 export const CompletionOverlay: React.FC<CompletionOverlayProps> = ({ onClose }) => {
   const router = useRouter();
-  const { capturedEvent, resetRecording } = useVoiceRecording();
+  const { lastEventId, resetRecordingState } = useVoiceRecording();
   
-  if (!capturedEvent) return null;
+  if (!lastEventId) return null;
   
   return (
     <motion.div 
@@ -49,12 +49,9 @@ export const CompletionOverlay: React.FC<CompletionOverlayProps> = ({ onClose })
       >
         <div className="flex items-start">
           <div className="flex-shrink-0 mr-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${capturedEvent.type === "feeding" ? "bg-[#10B981]" : capturedEvent.type === "sleep" ? "bg-[#3B82F6]" : capturedEvent.type === "diaper" ? "bg-[#F59E0B]" : "bg-[#7C3AED]"}`}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-[#10B981]">
               <Icon 
-                name={capturedEvent.type === "feeding" ? "Baby" : 
-                      capturedEvent.type === "sleep" ? "Moon" : 
-                      capturedEvent.type === "diaper" ? "Star" : 
-                      "Star"} 
+                name="Check"
                 size={20} 
                 color="#FFFFFF" 
               />
@@ -63,14 +60,14 @@ export const CompletionOverlay: React.FC<CompletionOverlayProps> = ({ onClose })
           <div className="flex-1">
             <div className="flex justify-between items-start mb-1">
               <span className="text-[15px] font-medium text-[#F9FAFB]">
-                {capturedEvent.type.charAt(0).toUpperCase() + capturedEvent.type.slice(1)}
+                Event Captured
               </span>
               <span className="text-[14px] text-[#9CA3AF]">
-                {capturedEvent.time}
+                {new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
               </span>
             </div>
             <p className="text-[14px] text-[#D1D5DB]">
-              {capturedEvent.description}
+              Your event has been successfully recorded and saved
             </p>
           </div>
         </div>
@@ -92,7 +89,7 @@ export const CompletionOverlay: React.FC<CompletionOverlayProps> = ({ onClose })
             router.push('/timeline?newEvent=true');
             
             // Reset recording state
-            resetRecording();
+            resetRecordingState();
             
             // Close the overlay if provided
             if (onClose) onClose();
