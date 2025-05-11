@@ -497,27 +497,13 @@ serve(async (req: Request) => {
     
     if (tenantError) {
       debug('Error fetching tenant_id', tenantError);
-      // Try fallback to users table
-      const { data: userData, error: userDataError } = await supabaseClient
-        .from('users')
-        .select('tenant_id')
-        .eq('id', user.id)
-        .single();
-      
-      if (userDataError || !userData?.tenant_id) {
-        debug('No tenant_id found for user', { userId: user.id });
-        return new Response(
-          JSON.stringify({ error: 'User tenant not found' }),
-          {
-            status: 404,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
-      
-      tenantId = userData.tenant_id;
-    } else {
-      tenantId = userTenant.tenant_id;
+      return new Response(
+        JSON.stringify({ error: 'Tenant not found for user' }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
     
     debug('Found tenant_id', { tenantId });
