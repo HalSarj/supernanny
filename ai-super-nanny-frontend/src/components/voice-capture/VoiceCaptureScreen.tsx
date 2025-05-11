@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import { Icon } from "../ui/Icon";
 import { useVoiceRecording } from "@/contexts/VoiceRecordingContext";
-import { ConnectedVoiceCaptureButton, RecordingWaveform, CompletionOverlay, IdleStateContent } from "./index";
+import { ConnectedVoiceCaptureButton, RecordingWaveform, CompletionOverlay, IdleStateContent, ProcessingErrorDisplay } from "./index";
 
 // Component has been extracted to RecordingWaveform.tsx
 
@@ -13,7 +13,7 @@ import { ConnectedVoiceCaptureButton, RecordingWaveform, CompletionOverlay, Idle
 // Main VoiceCaptureScreen component
 const VoiceCaptureScreen: React.FC = () => {
   const router = useRouter();
-  const { recordingState, recordingDuration, capturedEvent, formatDuration } = useVoiceRecording();
+  const { recordingState, recordingDuration, lastEventId, formatDuration, processingError } = useVoiceRecording();
   
   const isRecording = recordingState === 'recording';
   const isProcessing = recordingState === 'processing';
@@ -46,8 +46,11 @@ const VoiceCaptureScreen: React.FC = () => {
       <div className="flex-1 flex flex-col items-center justify-center px-4 pb-20 pt-10">
         {/* Completion state overlay */}
         <AnimatePresence>
-          {showCompletion && capturedEvent && (
+          {showCompletion && lastEventId && (
             <CompletionOverlay />
+          )}
+          {processingError && (
+            <ProcessingErrorDisplay />
           )}
         </AnimatePresence>
 
