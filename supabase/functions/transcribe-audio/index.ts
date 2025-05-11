@@ -34,12 +34,19 @@ interface WhisperResponse {
 }
 
 // Interface for the structured data extraction
-interface ExtractedData {
+interface ExtractedEvent {
   event_type: string;
   event_time?: string;
   metrics?: Record<string, any>;
   tags?: string[];
   summary: string;
+  text_snippet: string;
+  confidence_score: number;
+  event_hash?: string;
+}
+
+interface ExtractedData {
+  events: ExtractedEvent[];
   raw_text: string;
 }
 
@@ -113,9 +120,71 @@ const transcribeAudio = async (audioUrl: string): Promise<string> => {
 };
 
 /**
- * Extracts structured data from transcribed text using OpenAI
+ * Generates a hash for an event to help with duplicate detection
+ * @param event The event to hash
+ * @returns A string hash representing the event
+ */
+const generateEventHash = (event: ExtractedEvent): string => {
+  // Create a string representation of the event's key properties
+  const hashInput = [
+    event.event_type,
+    event.event_time || '',
+    event.summary,
+    JSON.stringify(event.metrics || {})
+  ].join('|');
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < hashInput.length; i++) {
+    const char = hashInput.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  return hash.toString(16);
+};
+
+/**
+ * Calculates a confidence score for an extracted event
+ * @param event The extracted event
+ * @param text The original text
+ * @returns A confidence score between 0-100
+ */
+const calculateConfidenceScore = (event: ExtractedEvent, text: string): number => {
+  let score = 70; // Base score
+  
+  // Adjust score based on event properties
+  if (event.event_time) score += 10;
+  if (event.metrics && Object.keys(event.metrics).length > 0) score += 10;
+  if (event.tags && event.tags.length > 0) score += 5;
+  
+  // Check for key terms in the text snippet based on event type
+  const keyTerms: Record<string, string[]> = {
+    'feeding': ['feed', 'bottle', 'formula', 'breast', 'milk', 'oz', 'ounce', 'nurse'],
+    'sleep': ['sleep', 'nap', 'bed', 'woke', 'tired', 'rest', 'awake'],
+    'diaper': ['diaper', 'wet', 'dirty', 'change', 'poop', 'pee', 'bowel', 'movement']
+  };
+  
+  if (event.event_type in keyTerms) {
+    const relevantTerms = keyTerms[event.event_type];
+    const textLower = event.text_snippet.toLowerCase();
+    
+    // Count how many key terms are present
+    const matchCount = relevantTerms.filter(term => textLower.includes(term)).length;
+    const matchRatio = matchCount / relevantTerms.length;
+    
+    // Adjust score based on key term matches
+    score += Math.min(matchRatio * 20, 20); // Up to 20 points for term matches
+  }
+  
+  // Cap the score at 100
+  return Math.min(Math.round(score), 100);
+};
+
+/**
+ * Extracts multiple structured events from transcribed text using OpenAI
  * @param text Transcribed text from the audio
- * @returns Structured data with event type, metrics, and summary
+ * @returns Structured data with multiple events, each with type, metrics, and summary
  */
 const extractStructuredData = async (text: string): Promise<ExtractedData> => {
   debug('Extracting structured data from text', { textLength: text.length });
@@ -129,19 +198,26 @@ const extractStructuredData = async (text: string): Promise<ExtractedData> => {
   }
 
   try {
-    debug('Preparing request to OpenAI Chat API');
+    debug('Preparing request to OpenAI Chat API for multiple event extraction');
     const requestBody = {
       model: 'gpt-4o',
       messages: [
         {
           role: 'system',
           content: `You are an AI assistant that helps parents track baby events. 
-          Extract structured data from the parent's voice note. 
-          Identify the event type (feeding, diaper, sleep, milestone, etc.), 
-          any metrics mentioned (amount, duration, etc.), 
-          and create a brief summary. 
+          Extract multiple structured events from the parent's voice note. 
+          Identify each distinct event mentioned (feeding, diaper, sleep) and extract details for each one.
+          For each event, identify:
+          1. The event type (feeding, diaper, sleep)
+          2. When it happened (extract or estimate time based on context)
+          3. Any metrics mentioned (amount, duration, etc.)
+          4. A brief summary of the event
+          5. The specific part of the text that mentions this event
+          
           If times are mentioned, standardize them to 24-hour format.
-          If the text doesn't clearly describe a baby-related event, categorize it as "note".`
+          If times are ambiguous (e.g., "this morning"), make a reasonable estimate based on context.
+          If multiple events of the same type are mentioned, extract each as a separate event.
+          Focus only on feeding, diaper, and sleep events for now.`
         },
         {
           role: 'user',
@@ -150,47 +226,58 @@ const extractStructuredData = async (text: string): Promise<ExtractedData> => {
       ],
       functions: [
         {
-          name: 'extract_baby_event',
-          description: 'Extract structured data about a baby event from text',
+          name: 'extract_baby_events',
+          description: 'Extract multiple structured events about a baby from text',
           parameters: {
             type: 'object',
             properties: {
-              event_type: {
-                type: 'string',
-                description: 'The type of event (feeding, diaper, sleep, milestone, measurement, note, etc.)',
-                enum: ['feeding', 'diaper', 'sleep', 'milestone', 'measurement', 'bath', 'medication', 'activity', 'note']
-              },
-              event_time: {
-                type: 'string',
-                description: 'The time of the event in 24-hour format (HH:MM) if mentioned, or null'
-              },
-              metrics: {
-                type: 'object',
-                description: 'Any metrics mentioned in the event (amount, duration, weight, etc.)',
-                properties: {
-                  amount: { type: 'number', description: 'Amount in oz or ml for feeding' },
-                  duration: { type: 'number', description: 'Duration in minutes' },
-                  weight: { type: 'number', description: 'Weight in pounds or kg' },
-                  height: { type: 'number', description: 'Height in inches or cm' },
-                  temperature: { type: 'number', description: 'Temperature in F or C' },
-                  diaper_type: { type: 'string', enum: ['wet', 'dirty', 'both', 'dry'] }
-                }
-              },
-              tags: {
+              events: {
                 type: 'array',
-                description: 'Keywords or categories for the event',
-                items: { type: 'string' }
-              },
-              summary: {
-                type: 'string',
-                description: 'A brief, clear summary of the event in third person'
+                description: 'List of events extracted from the text',
+                items: {
+                  type: 'object',
+                  properties: {
+                    event_type: {
+                      type: 'string',
+                      description: 'The type of event',
+                      enum: ['feeding', 'diaper', 'sleep']
+                    },
+                    event_time: {
+                      type: 'string',
+                      description: 'The time of the event in 24-hour format (HH:MM) if mentioned, or best estimate based on context'
+                    },
+                    metrics: {
+                      type: 'object',
+                      description: 'Any metrics mentioned in the event',
+                      properties: {
+                        amount: { type: 'number', description: 'Amount in oz or ml for feeding' },
+                        duration: { type: 'number', description: 'Duration in minutes' },
+                        diaper_type: { type: 'string', enum: ['wet', 'dirty', 'both', 'dry'] }
+                      }
+                    },
+                    tags: {
+                      type: 'array',
+                      description: 'Keywords or categories for the event',
+                      items: { type: 'string' }
+                    },
+                    summary: {
+                      type: 'string',
+                      description: 'A brief, clear summary of the event in third person'
+                    },
+                    text_snippet: {
+                      type: 'string',
+                      description: 'The specific part of the text that mentions this event'
+                    }
+                  },
+                  required: ['event_type', 'summary', 'text_snippet']
+                }
               }
             },
-            required: ['event_type', 'summary']
+            required: ['events']
           }
         }
       ],
-      function_call: { name: 'extract_baby_event' }
+      function_call: { name: 'extract_baby_events' }
     };
     
     debug('Calling OpenAI Chat API');
@@ -222,17 +309,38 @@ const extractStructuredData = async (text: string): Promise<ExtractedData> => {
       throw new Error('Failed to extract structured data');
     }
     
-    const extractedData = JSON.parse(functionCall.arguments) as ExtractedData;
-    extractedData.raw_text = text;
+    // Parse the extracted events
+    const parsedData = JSON.parse(functionCall.arguments);
+    const events = parsedData.events || [];
     
-    debug('Structured data extraction successful', extractedData);
-    return extractedData;
+    // Add confidence scores and event hashes to each event
+    const processedEvents = events.map((event: ExtractedEvent) => {
+      // Calculate confidence score
+      event.confidence_score = calculateConfidenceScore(event, text);
+      
+      // Generate event hash for duplicate detection
+      event.event_hash = generateEventHash(event);
+      
+      return event;
+    });
+    
+    debug('Multiple events extraction successful', { eventCount: processedEvents.length });
+    
+    return {
+      events: processedEvents,
+      raw_text: text
+    };
   } catch (error) {
     debug('Structured data extraction error', { error: error instanceof Error ? error.message : String(error) });
     // Fallback to basic extraction if advanced fails
     return {
-      event_type: 'note',
-      summary: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+      events: [{
+        event_type: 'note',
+        summary: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+        text_snippet: text,
+        confidence_score: 30,
+        event_hash: '0'
+      }],
       raw_text: text
     };
   }
@@ -414,21 +522,132 @@ serve(async (req: Request) => {
       };
     }
 
-    // Step 3: Store the event in the database
-    const { data: eventData, error: eventError } = await supabaseAdmin
-      .from('events')
+    // Step 3: Store multiple events in the database
+    // First, create a diary entry to store the full transcription
+    const { data: diaryData, error: diaryError } = await supabaseAdmin
+      .from('diary_entries')
       .insert({
         tenant_id: tenantId,
         user_id: user.id,
-        event_type: structuredData.event_type,
-        event_time: structuredData.event_time,
-        metrics: structuredData.metrics,
-        tags: structuredData.tags,
-        summary: structuredData.summary,
         raw_text: structuredData.raw_text,
         audio_file_id: fileId,
         duration: duration,
       })
+      .select();
+      
+    if (diaryError) {
+      debug('Error storing diary entry', diaryError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to store diary entry', 
+          details: diaryError.message 
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+    
+    const diaryEntryId = diaryData?.[0]?.id;
+    debug('Diary entry stored successfully', { diaryEntryId });
+    
+    // Check if we have any events to store
+    if (!structuredData.events || structuredData.events.length === 0) {
+      debug('No events extracted from transcription');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          transcription: transcribedText,
+          structured_data: structuredData,
+          diary_entry: diaryData?.[0],
+          events: []
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+    
+    // Now store each extracted event with a reference to the diary entry
+    const eventInserts = structuredData.events.map(event => {
+      // Parse the event_time if available
+      let eventTime = new Date(); // Default to current time
+      
+      if (event.event_time) {
+        try {
+          // Try to parse time formats like "10 a.m.", "10:30", etc.
+          const timeString = event.event_time.toLowerCase();
+          
+          // Handle formats like "10 a.m.", "10am", etc.
+          const amPmMatch = timeString.match(/([0-9]{1,2})(?::([0-9]{1,2}))?\s*([ap]\.?m\.?)?/);
+          if (amPmMatch) {
+            const hours = parseInt(amPmMatch[1]);
+            const minutes = amPmMatch[2] ? parseInt(amPmMatch[2]) : 0;
+            const isPM = amPmMatch[3] && amPmMatch[3].startsWith('p');
+            
+            eventTime = new Date();
+            // Convert to 24-hour format if PM
+            let hour24 = hours;
+            if (isPM && hours < 12) hour24 += 12;
+            if (!isPM && hours === 12) hour24 = 0;
+            
+            eventTime.setHours(hour24);
+            eventTime.setMinutes(minutes);
+            eventTime.setSeconds(0);
+            eventTime.setMilliseconds(0);
+            
+            debug('Parsed event time', { 
+              original: event.event_time, 
+              parsed: eventTime.toISOString(),
+              hours, minutes, isPM
+            });
+          }
+          // Handle 24-hour format like "14:30"
+          else if (timeString.match(/^([0-9]{1,2}):([0-9]{1,2})$/)) {
+            const [hours, minutes] = timeString.split(':').map(Number);
+            eventTime = new Date();
+            eventTime.setHours(hours);
+            eventTime.setMinutes(minutes);
+            eventTime.setSeconds(0);
+            eventTime.setMilliseconds(0);
+            
+            debug('Parsed 24-hour event time', { 
+              original: event.event_time, 
+              parsed: eventTime.toISOString() 
+            });
+          }
+        } catch (e) {
+          debug('Error parsing event time', { error: e.message, time: event.event_time });
+          // Keep using default current time
+        }
+      }
+      
+      return {
+        tenant_id: tenantId,
+        user_id: user.id,
+        diary_entry_id: diaryEntryId,
+        event_type: event.event_type,
+        start_time: eventTime, // Use parsed time or current time as fallback
+        metrics: event.metrics,
+        tags: event.tags,
+        summary: event.summary,
+        raw_text: event.text_snippet,
+        metadata: {
+          confidence_score: event.confidence_score,
+          event_hash: event.event_hash,
+          event_time: event.event_time,
+          text_snippet: event.text_snippet
+        }
+      };
+    });
+    
+    debug('Inserting events', { count: eventInserts.length, events: eventInserts });
+    
+    const { data: eventData, error: eventError } = await supabaseAdmin
+      .from('events')
+      .insert(eventInserts)
       .select();
 
     if (eventError) {
@@ -447,13 +666,14 @@ serve(async (req: Request) => {
 
     debug('Event stored successfully', { eventId: eventData?.[0]?.id });
     
-    // Return the transcription and structured data
+    // Return the transcription and structured data with all events
     return new Response(
       JSON.stringify({
         success: true,
         transcription: transcribedText,
         structured_data: structuredData,
-        event: eventData?.[0]
+        diary_entry: diaryData?.[0],
+        events: eventData
       }),
       {
         status: 200,

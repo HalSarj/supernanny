@@ -5,12 +5,41 @@ import { createBrowserClient } from '@supabase/ssr';
 import { v4 as uuidv4 } from 'uuid';
 
 // Define types for the service
+export interface ExtractedEvent {
+  id?: string;
+  event_type: string;
+  event_time?: string;
+  start_time?: string; // Database timestamp for the event
+  metrics?: Record<string, any>;
+  tags?: string[];
+  summary: string;
+  text_snippet: string;
+  confidence_score: number;
+  event_hash?: string;
+  diary_entry_id?: string;
+  created_at?: string;
+  metadata?: {
+    event_time?: string;
+    confidence_score?: number;
+    event_hash?: string;
+    text_snippet?: string;
+    original_time_string?: string; // Original time string from transcription
+  };
+}
+
+export interface DiaryEntry {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  raw_text: string;
+  audio_file_id?: string;
+  duration?: number;
+  created_at: string;
+}
+
 export interface TranscriptionResult {
   // Success response properties
   success: boolean;
-  eventId?: string;
-  summary?: string;
-  eventType?: string;
   
   // Error response properties
   error?: string;
@@ -19,30 +48,11 @@ export interface TranscriptionResult {
   // Original detailed response properties (when successful)
   transcription?: string;
   structured_data?: {
-    event_type: string;
-    event_time?: string;
-    metrics?: Record<string, any>;
-    tags?: string[];
-    summary: string;
+    events: ExtractedEvent[];
     raw_text: string;
   };
-  event?: {
-    id: string;
-    tenant_id: string;
-    user_id: string;
-    event_type: string;
-    start_time: string;
-    end_time?: string;
-    notes: string;
-    metadata: {
-      metrics?: Record<string, any>;
-      tags?: string[];
-      raw_text: string;
-      audio_file_id?: string;
-      duration?: number;
-    };
-    created_at: string;
-  };
+  diary_entry?: DiaryEntry;
+  events?: ExtractedEvent[];
 }
 
 /**
@@ -248,7 +258,192 @@ export class AudioProcessingService {
       
       console.log('Transcription completed successfully', { hasData: !!transcriptionData });
       
-      return transcriptionData as TranscriptionResult;
+      // Process the transcription result
+      const result = transcriptionData as TranscriptionResult;
+      
+      // Store the events in localStorage for offline access
+      if (result.success && result.events && result.events.length > 0) {
+        try {
+          // Get existing events from localStorage
+          const existingEventsJson = localStorage.getItem('timelineEvents');
+          const existingEvents = existingEventsJson ? JSON.parse(existingEventsJson) : [];
+          
+          // Transform the new events to the timeline format
+          const newEvents = result.events.map(event => {
+            // Use the original time string from metadata if available
+            let eventDate;
+            let timeString = '';
+            let timestamp = '';
+            
+            // First priority: use the original time string from metadata
+            if (event.metadata?.original_time_string) {
+              timeString = event.metadata.original_time_string;
+              console.log('Using original time string from metadata:', { timeString });
+              
+              // Still set the timestamp for sorting (using start_time)
+              if (event.start_time) {
+                try {
+                  eventDate = new Date(event.start_time);
+                  timestamp = eventDate.toISOString();
+                } catch (e) {
+                  console.error('Error parsing start_time for timestamp:', e);
+                }
+              }
+            }
+            // Second priority: use start_time from the database
+            else if (event.start_time) {
+              try {
+                eventDate = new Date(event.start_time);
+                timestamp = eventDate.toISOString();
+                timeString = eventDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                console.log('Using start_time from database:', { start_time: event.start_time, formatted: timeString });
+              } catch (e) {
+                console.error('Error parsing start_time from database:', e);
+                // Will fall back to event_time or current time
+              }
+            }
+            // Third priority: parse event_time from metadata
+            else if (event.metadata?.event_time || event.event_time) {
+              const eventTimeStr = event.metadata?.event_time || event.event_time;
+              try {
+                // Try to parse time formats like "10 a.m.", "10:30", etc.
+                if (eventTimeStr) {
+                  timeString = eventTimeStr; // Use the exact string mentioned
+                  console.log('Using event_time string directly:', { timeString });
+                  
+                  // Still create a timestamp for sorting
+                  const timeStr = eventTimeStr.toLowerCase();
+                  
+                  // Handle formats like "10 a.m.", "10am", etc.
+                  const amPmMatch = timeStr.match(/([0-9]{1,2})(?::([0-9]{1,2}))?\s*([ap]\.?m\.?)?/);
+                  if (amPmMatch) {
+                    const hours = parseInt(amPmMatch[1]);
+                    const minutes = amPmMatch[2] ? parseInt(amPmMatch[2]) : 0;
+                    const isPM = amPmMatch[3] && amPmMatch[3].startsWith('p');
+                    
+                    eventDate = new Date();
+                    // Convert to 24-hour format if PM
+                    let hour24 = hours;
+                    if (isPM && hours < 12) hour24 += 12;
+                    if (!isPM && hours === 12) hour24 = 0;
+                    
+                    eventDate.setHours(hour24);
+                    eventDate.setMinutes(minutes);
+                    eventDate.setSeconds(0);
+                    
+                    // Create an ISO timestamp for sorting
+                    timestamp = eventDate.toISOString();
+                    
+                    // Format the time string for display
+                    const period = hour24 >= 12 ? 'PM' : 'AM';
+                    const hour12 = hour24 % 12 || 12;
+                    // Assign to the outer timeString variable
+                    timeString = `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
+                    console.log('Parsed event_time from metadata:', { original: eventTimeStr, formatted: timeString });
+                  }
+                  // Handle 24-hour format like "14:30"
+                  else if (timeStr.match(/^([0-9]{1,2}):([0-9]{1,2})$/)) {
+                    const [hours, minutes] = timeStr.split(':').map(Number);
+                    eventDate = new Date();
+                    eventDate.setHours(hours);
+                    eventDate.setMinutes(minutes);
+                    eventDate.setSeconds(0);
+                    
+                    timestamp = eventDate.toISOString();
+                    // Assign to the outer timeString variable
+                    timeString = eventDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                    console.log('Parsed 24-hour event_time:', { original: eventTimeStr, formatted: timeString });
+                  }
+                }
+                else {
+                  throw new Error('Unrecognized time format');
+                }
+              } catch (e) {
+                console.error('Error parsing event_time:', e);
+                // Fallback to current time
+                eventDate = new Date();
+                timestamp = eventDate.toISOString();
+                timeString = eventDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+              }
+            }
+            // Last resort: use current time
+            else {
+              eventDate = new Date();
+              timestamp = eventDate.toISOString();
+              timeString = eventDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+              console.log('Using current time as fallback');
+            }
+            
+            // Format description to match the dummy events style based on event type
+            let description = '';
+            
+            if (event.event_type === 'feeding') {
+              if (event.metrics?.amount) {
+                description = `Bottle feeding, ${event.metrics.amount}${typeof event.metrics.amount === 'number' ? 'ml' : ''} formula`;
+              } else {
+                description = 'Feeding time';
+              }
+              if (event.summary) {
+                description = event.summary;
+              }
+            } else if (event.event_type === 'sleep') {
+              if (event.metrics?.duration) {
+                // Format duration in a readable way
+                const duration = event.metrics.duration;
+                const hours = Math.floor(duration / 60);
+                const minutes = duration % 60;
+                const durationText = hours > 0 
+                  ? `${hours} hour${hours > 1 ? 's' : ''} ${minutes > 0 ? ` ${minutes} minutes` : ''}` 
+                  : `${minutes} minutes`;
+                description = `Nap time, slept for ${durationText}`;
+              } else {
+                description = 'Sleep time';
+              }
+              if (event.summary) {
+                description = event.summary;
+              }
+            } else if (event.event_type === 'diaper') {
+              if (event.metrics?.diaper_type) {
+                description = `${event.metrics.diaper_type} diaper, changed`;
+              } else {
+                description = 'Diaper change';
+              }
+              if (event.summary) {
+                description = event.summary;
+              }
+            } else if (event.event_type === 'milestone') {
+              description = event.summary || 'New milestone';
+            } else {
+              description = event.summary || `${event.event_type} event`;
+            }
+            
+            // Create a TimelineEvent object that matches the interface in timeline/page.tsx
+            return {
+              id: event.id || uuidv4(),
+              type: event.event_type as 'feeding' | 'sleep' | 'diaper' | 'milestone',
+              time: timeString,
+              timestamp: timestamp, // Add ISO timestamp for sorting
+              description: description,
+              fullNarrative: event.text_snippet || description,
+              hasDetails: !!event.text_snippet,
+              isNew: true
+            };
+          });
+          
+          // Combine with existing events, avoiding duplicates
+          const combinedEvents = [...newEvents, ...existingEvents];
+          
+          // Save back to localStorage
+          localStorage.setItem('timelineEvents', JSON.stringify(combinedEvents));
+          
+          // Dispatch an event to notify the timeline to refresh
+          window.dispatchEvent(new CustomEvent('newEventAdded'));
+        } catch (error) {
+          console.error('Error saving events to localStorage:', error);
+        }
+      }
+      
+      return result;
     } catch (error: any) {
       console.error('Error in processAudioRecording:', error);
       
@@ -296,6 +491,50 @@ export class AudioProcessingService {
       }
     } catch (error: any) {
       console.error('Error in setAudioFileTTL:', error);
+    }
+  }
+  
+  /**
+   * Fetch timeline events from the database
+   * @param startDate Start date for the range
+   * @param endDate End date for the range
+   * @param offset Pagination offset
+   * @returns Array of timeline events
+   */
+  public async fetchTimelineEvents(startDate: Date, endDate: Date, offset = 0): Promise<ExtractedEvent[]> {
+    try {
+      // Check authentication
+      const isAuthenticated = await this.checkAuthentication();
+      if (!isAuthenticated) {
+        throw new Error('Authentication required');
+      }
+      
+      // Format dates for query
+      const startDateStr = startDate.toISOString();
+      const endDateStr = endDate.toISOString();
+      
+      // Query events from Supabase
+      const { data, error } = await this.supabase
+        .from('events')
+        .select('*, diary_entries(raw_text)')
+        .gte('start_time', startDateStr)
+        .lte('start_time', endDateStr)
+        .order('start_time', { ascending: false })
+        .range(offset, offset + 49);
+      
+      if (error) {
+        console.error('Error fetching timeline events:', error);
+        throw error;
+      }
+      
+      // Transform data to include diary text directly
+      return data.map((event: any) => ({
+        ...event,
+        diary_text: event.diary_entries?.raw_text || null
+      }));
+    } catch (error: any) {
+      console.error('Error in fetchTimelineEvents:', error);
+      throw error;
     }
   }
 }
